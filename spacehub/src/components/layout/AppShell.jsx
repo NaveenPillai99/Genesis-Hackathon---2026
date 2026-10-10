@@ -14,25 +14,95 @@ import NotificationDrawer from './NotificationDrawer'
 import QuickRoleSwitcherModal from './QuickRoleSwitcherModal'
 
 function navFor(role) {
-  const nav = [
+  if (role === ROLES.LOST_PROPERTY_HANDLER) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/lost-found', label: 'Custody & Handover', icon: '🎒' },
+      { to: '/classrooms', label: 'Campus Blocks', icon: '🏫' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LAB_ASSISTANT || role === ROLES.LAB_ADMIN) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/facilities', label: 'Equipment & Inductions', icon: '🔧' },
+      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.CLASS_ADVISOR) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'Timetable Approvals', icon: '✅' },
+      { to: '/lost-found', label: 'Classroom Custody', icon: '📦' },
+      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/events', label: 'Campus Events', icon: '🎤' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.CLASS_REP) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'Propose Reschedule', icon: '⚡' },
+      { to: '/classrooms', label: 'Book Class Slot', icon: '🏫' },
+      { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+      { to: '/facilities', label: 'Prototyping Labs', icon: '🧪' },
+      { to: '/events', label: 'Events Feed', icon: '🎤' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.FACULTY) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'Teaching Schedule', icon: '📚' },
+      { to: '/events', label: 'Request Event Hall', icon: '🎤' },
+      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/facilities', label: 'HPC & Labs', icon: '🖥️' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.RESOURCE_ADMIN || role === ROLES.ADMIN) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/events/approvals', label: 'Venue Approvals', icon: '⚖️' },
+      { to: '/admin', label: 'Campus Analytics', icon: '📊' },
+      { to: '/governance', label: 'Audit & Governance', icon: '🛡️' },
+      { to: '/events', label: 'Event Venues', icon: '🎤' },
+      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.SYS_ADMIN) {
+    return [
+      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/admin', label: 'System Analytics', icon: '📊' },
+      { to: '/governance', label: 'Security & AUMS', icon: '🛡️' },
+      { to: '/events/approvals', label: 'Venue Approvals', icon: '⚖️' },
+      { to: '/academic-scheduling', label: 'Academic Schedules', icon: '📅' },
+      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities', icon: '🧪' },
+      { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  // Default: Student
+  return [
     { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-    { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
-    { to: '/academic-scheduling', label: 'Academic Scheduling', icon: '📅' },
-    { to: '/events', label: 'Event Venues', icon: '🎤' },
-    { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+    { to: '/classrooms', label: 'Study Classrooms', icon: '🪑' },
+    { to: '/academic-scheduling', label: 'My Timetable', icon: '📅' },
     { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+    { to: '/facilities', label: 'Prototyping Labs', icon: '🧪' },
+    { to: '/events', label: 'Campus Events', icon: '🎤' },
+    { to: '/profile', label: 'My Profile & ID', icon: '👤' },
   ]
-  if (CAN_APPROVE_EVENT.has(role)) {
-    nav.push({ to: '/events/approvals', label: 'Venue Approvals', icon: '✅' })
-  }
-  if (role === ROLES.ADMIN || role === ROLES.RESOURCE_ADMIN || role === ROLES.SYS_ADMIN) {
-    nav.push({ to: '/admin', label: 'Admin Dashboard', icon: '📊' })
-  }
-  if (CAN_VIEW_AUDIT_LOGS.has(role)) {
-    nav.push({ to: '/governance', label: 'Audit & Governance', icon: '🛡️' })
-  }
-  nav.push({ to: '/profile', label: 'My Profile & ID', icon: '👤' })
-  return nav
 }
 
 function linkClasses({ isActive }) {
