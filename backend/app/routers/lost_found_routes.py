@@ -331,6 +331,12 @@ def review_claim(
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
 
+    if claim.claimant_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Conflict of Interest: Users are prohibited from approving their own item claims."
+        )
+
     claim.status = review_in.decision
     claim.handler_notes = review_in.handler_notes
 

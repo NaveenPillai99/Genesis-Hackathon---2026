@@ -4,16 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import EventRequest, Room, User
-from app.schemas import EventRequestCreate, EventReviewRequest, EventResponse
-from app.auth import get_current_user, require_roles, record_audit, send_notification
+from app.schemas import EventCreate, EventReview, EventResponse
+from app.auth import (
+    get_current_user,
+    require_permission,
+    record_audit,
+    send_notification,
+    get_user_permissions,
+)
 from app.config import (
     ROLE_FACULTY, ROLE_RESOURCE_ADMIN, ROLE_SYS_ADMIN
 )
 
 router = APIRouter(prefix="/events", tags=["Event Venues"])
-
-CAN_REQUEST_EVENT = [ROLE_FACULTY, ROLE_RESOURCE_ADMIN, ROLE_SYS_ADMIN]
-CAN_APPROVE_EVENT = [ROLE_RESOURCE_ADMIN, ROLE_SYS_ADMIN]
 
 def calculate_priority_score(level: str, is_academic: bool, has_external_guests: bool, audience: int) -> int:
     score = 0
@@ -37,8 +40,16 @@ def calculate_priority_score(level: str, is_academic: bool, has_external_guests:
 def list_events(
     status: Optional[str] = None,
     venue_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    perms = get_user_permissions(current_user, db)
+    if "event.view" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Account lacks event viewing permissions."
+        )
+
     query = db.query(EventRequest)
     if status:
         query = query.filter(EventRequest.status == status)
@@ -55,16 +66,10 @@ def get_public_event_feed(db: Session = Depends(get_db)):
 
 @router.post("/", response_model=EventResponse)
 def request_event_venue(
-    event_in: EventRequestCreate,
-    current_user: User = Depends(get_current_user),
+    event_in: EventCreate,
+    current_user: User = Depends(require_permission("event.request.create")),
     db: Session = Depends(get_db)
 ):
-    if current_user.role not in CAN_REQUEST_EVENT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role '{current_user.role}' cannot request major event venues. Faculty or Admin credentials required."
-        )
-
     venue = db.query(Room).filter(Room.id == event_in.venue_id).first()
     if not venue or venue.type != "event_venue":
         raise HTTPException(status_code=400, detail="Target venue not found or is not an event hall")
@@ -86,9 +91,6 @@ def request_event_venue(
         event_in.level, event_in.is_academic, event_in.has_external_guests, event_in.expected_audience
     )
 
-    # Resource Admin auto-approves their own events
-    initial_status = "approved" if current_user.role in CAN_APPROVE_EVENT else "pending"
-
     evt = EventRequest(
         name=event_in.name,
         organizer=current_user.name,
@@ -104,7 +106,7 @@ def request_event_venue(
         priority_score=priority,
         av_requirements=event_in.av_requirements,
         purpose=event_in.purpose,
-        status=initial_status
+        status="pending"
     )
     db.add(evt)
     db.commit()
@@ -130,39 +132,38 @@ def request_event_venue(
 @router.post("/{event_id}/review", response_model=EventResponse)
 def review_event_request(
     event_id: str,
-    review_in: EventReviewRequest,
-    current_user: User = Depends(get_current_user),
+    review_in: EventReview,
+    current_user: User = Depends(require_permission("event.request.approve")),
     db: Session = Depends(get_db)
 ):
-    if current_user.role not in CAN_APPROVE_EVENT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Central Resource Admins can approve or decline venue reservations."
-        )
-
     evt = db.query(EventRequest).filter(EventRequest.id == event_id).first()
     if not evt:
         raise HTTPException(status_code=404, detail="Event request not found")
+
+    # RULE 9: A user cannot approve their own request unless a documented policy explicitly permits it
+    if evt.organizer_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Conflict of Interest: Users are prohibited from approving their own event venue requests."
+        )
 
     if review_in.decision not in ["approved", "declined"]:
         raise HTTPException(status_code=400, detail="Decision must be 'approved' or 'declined'")
 
     evt.status = review_in.decision
-    evt.admin_notes = review_in.admin_notes
-    evt.rejection_reason = review_in.rejection_reason
-
+    evt.admin_notes = review_in.notes
     db.commit()
     db.refresh(evt)
 
     record_audit(
         db, current_user.id, current_user.name, current_user.role,
-        f"EVENT_{evt.status.upper()}", "EVENT", evt.id,
-        f"Admin {current_user.name} set status to {evt.status}"
+        f"EVENT_{review_in.decision.upper()}", "EVENT", evt.id,
+        f"Decision by {current_user.name}. Notes: {review_in.notes}"
     )
 
     send_notification(
-        db, evt.organizer_id, f"Venue Request {evt.status.capitalize()}",
-        f"Your event '{evt.name}' has been {evt.status}. Reason: {review_in.rejection_reason or 'Approved by Event Office'}.",
+        db, evt.organizer_id, f"Event Venue Request {review_in.decision.capitalize()}",
+        f"Your reservation for '{evt.name}' on {evt.event_date} has been {review_in.decision}.",
         category="event", link="/events"
     )
 

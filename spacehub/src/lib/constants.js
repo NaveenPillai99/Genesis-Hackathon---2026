@@ -5,6 +5,7 @@ export const ROLES = {
   CLASS_REP: 'class_rep',
   CLASS_ADVISOR: 'class_advisor',
   FACULTY: 'faculty',
+  HPC_FACULTY: 'hpc_faculty',
   LAB_ASSISTANT: 'lab_assistant',
   LAB_ADMIN: 'lab_admin',
   RESOURCE_ADMIN: 'resource_admin',
@@ -20,6 +21,7 @@ export const ROLE_LABELS = {
   [ROLES.CLASS_REP]: 'Class Representative',
   [ROLES.CLASS_ADVISOR]: 'Class Advisor',
   [ROLES.FACULTY]: 'Faculty Member',
+  [ROLES.HPC_FACULTY]: 'HPC Faculty / HPC Manager',
   [ROLES.LAB_ASSISTANT]: 'Lab Assistant',
   [ROLES.LAB_ADMIN]: 'Lab Administrator',
   [ROLES.RESOURCE_ADMIN]: 'Central Resource Admin',
@@ -32,6 +34,7 @@ export const ROLE_BADGE_COLORS = {
   [ROLES.CLASS_REP]: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   [ROLES.CLASS_ADVISOR]: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   [ROLES.FACULTY]: 'bg-blue-50 text-blue-700 border-blue-200',
+  [ROLES.HPC_FACULTY]: 'bg-violet-50 text-violet-700 border-violet-200',
   [ROLES.LAB_ASSISTANT]: 'bg-amber-50 text-amber-700 border-amber-200',
   [ROLES.LAB_ADMIN]: 'bg-orange-50 text-orange-700 border-orange-200',
   [ROLES.RESOURCE_ADMIN]: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -43,7 +46,8 @@ export const ROLE_DESCRIPTIONS = {
   [ROLES.STUDENT]: 'View classroom availability, browse approved events, report lost items, request eligible labs.',
   [ROLES.CLASS_REP]: 'Book free classroom slots for your section, submit class prepone/postpone reschedule proposals.',
   [ROLES.CLASS_ADVISOR]: 'Manage assigned classes, review & approve timetable reschedule proposals, handle classroom lost items.',
-  [ROLES.FACULTY]: 'Manage teaching schedule, submit event venues, review timetable changes, approve student HPC jobs.',
+  [ROLES.FACULTY]: 'Manage teaching schedule, submit event venues, review timetable changes, submit research compute.',
+  [ROLES.HPC_FACULTY]: 'Administer dedicated HPC supercomputing cluster, node health, allocation requests and maintenance.',
   [ROLES.LAB_ASSISTANT]: 'Manage assigned equipment, toggle maintenance, process lab slots, update custody.',
   [ROLES.LAB_ADMIN]: 'Configure lab policies, oversee lab assistants, grant safety inductions, review utilization.',
   [ROLES.RESOURCE_ADMIN]: 'Review event venue requests with priority score, override conflicts, view campus-wide analytics.',
@@ -81,8 +85,19 @@ export const CAN_MANAGE_FACILITY = new Set([
 ])
 
 export const CAN_APPROVE_HPC = new Set([
-  ROLES.FACULTY, ROLES.LAB_ADMIN, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
+  ROLES.HPC_FACULTY, ROLES.FACULTY, ROLES.LAB_ADMIN, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
 ])
+
+export const PERMISSIONS = {
+  EVENT_VIEW: 'event.view',
+  EVENT_REQUEST_CREATE: 'event.request.create',
+  EVENT_REQUEST_VIEW_OWN: 'event.request.view_own',
+  EVENT_REQUEST_REVIEW: 'event.request.review',
+  EVENT_REQUEST_APPROVE: 'event.request.approve',
+  EVENT_REQUEST_REJECT: 'event.request.reject',
+  EVENT_VENUE_MANAGE: 'event.venue.manage',
+  EVENT_PUBLISH: 'event.publish',
+}
 
 export const CAN_PROCESS_LOST_FOUND_CLAIMS = new Set([
   ROLES.CLASS_ADVISOR, ROLES.LOST_PROPERTY_HANDLER, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'

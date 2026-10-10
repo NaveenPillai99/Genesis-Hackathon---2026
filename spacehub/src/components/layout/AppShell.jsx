@@ -2,105 +2,106 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
-  CAN_APPROVE_EVENT,
-  CAN_VIEW_AUDIT_LOGS,
-  CAN_APPROVE_TIMETABLE_CHANGE,
   ROLES,
   ROLE_LABELS,
   ROLE_BADGE_COLORS,
 } from '../../lib/constants'
 import { listNotifications } from '../../lib/dataClient'
 import NotificationDrawer from './NotificationDrawer'
-import QuickRoleSwitcherModal from './QuickRoleSwitcherModal'
 
 function navFor(role) {
-  if (role === ROLES.LOST_PROPERTY_HANDLER) {
+  if (role === ROLES.HPC_FACULTY) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-      { to: '/lost-found', label: 'Custody & Handover', icon: '🎒' },
-      { to: '/classrooms', label: 'Campus Blocks', icon: '🏫' },
+      { to: '/', label: 'HPC Cluster Overview', icon: '⚡', end: true },
+      { to: '/facilities/hpc', label: 'Nodes & Allocations', icon: '🖥️' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
-  if (role === ROLES.LAB_ASSISTANT || role === ROLES.LAB_ADMIN) {
+  if (role === ROLES.LAB_ASSISTANT) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-      { to: '/facilities', label: 'Equipment & Inductions', icon: '🔧' },
-      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
+      { to: '/', label: 'Lab Assistant Desk', icon: '🏠', end: true },
+      { to: '/facilities', label: 'Assigned Equipment', icon: '🔧' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LAB_ADMIN) {
+    return [
+      { to: '/', label: 'Lab Admin Fleet', icon: '🏠', end: true },
+      { to: '/facilities', label: 'Equipment & Roster', icon: '🧪' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   if (role === ROLES.CLASS_ADVISOR) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/', label: 'Advisor Portal', icon: '🏠', end: true },
       { to: '/academic-scheduling', label: 'Timetable Approvals', icon: '✅' },
       { to: '/lost-found', label: 'Classroom Custody', icon: '📦' },
-      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
-      { to: '/events', label: 'Campus Events', icon: '🎤' },
+      { to: '/classrooms', label: 'Classrooms Radar', icon: '🏫' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   if (role === ROLES.CLASS_REP) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-      { to: '/academic-scheduling', label: 'Propose Reschedule', icon: '⚡' },
+      { to: '/', label: 'Class Rep Console', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'My Class Timetable', icon: '📅' },
       { to: '/classrooms', label: 'Book Class Slot', icon: '🏫' },
+      { to: '/events', label: 'Campus Events', icon: '🎤' },
       { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
-      { to: '/facilities', label: 'Prototyping Labs', icon: '🧪' },
-      { to: '/events', label: 'Events Feed', icon: '🎤' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   if (role === ROLES.FACULTY) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/', label: 'Faculty Desk', icon: '🏠', end: true },
       { to: '/academic-scheduling', label: 'Teaching Schedule', icon: '📚' },
-      { to: '/events', label: 'Request Event Hall', icon: '🎤' },
-      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
-      { to: '/facilities', label: 'HPC & Labs', icon: '🖥️' },
+      { to: '/classrooms', label: 'Classrooms Radar', icon: '🏫' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   if (role === ROLES.RESOURCE_ADMIN || role === ROLES.ADMIN) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+      { to: '/', label: 'Resource Admin Desk', icon: '🏠', end: true },
       { to: '/events/approvals', label: 'Venue Approvals', icon: '⚖️' },
+      { to: '/events', label: 'Event Venues', icon: '🎤' },
+      { to: '/classrooms', label: 'Campus Classrooms', icon: '🏫' },
       { to: '/admin', label: 'Campus Analytics', icon: '📊' },
       { to: '/governance', label: 'Audit & Governance', icon: '🛡️' },
-      { to: '/events', label: 'Event Venues', icon: '🎤' },
-      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
-      { to: '/facilities', label: 'Facilities', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LOST_PROPERTY_HANDLER) {
+    return [
+      { to: '/', label: 'Custody Center', icon: '🏠', end: true },
+      { to: '/lost-found', label: 'Custody & Handover', icon: '🎒' },
+      { to: '/classrooms', label: 'Campus Blocks', icon: '🏫' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   if (role === ROLES.SYS_ADMIN) {
     return [
-      { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-      { to: '/admin', label: 'System Analytics', icon: '📊' },
-      { to: '/governance', label: 'Security & AUMS', icon: '🛡️' },
-      { to: '/events/approvals', label: 'Venue Approvals', icon: '⚖️' },
-      { to: '/academic-scheduling', label: 'Academic Schedules', icon: '📅' },
-      { to: '/classrooms', label: 'Classrooms', icon: '🏫' },
-      { to: '/facilities', label: 'Facilities', icon: '🧪' },
-      { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+      { to: '/', label: 'System Admin Console', icon: '🏠', end: true },
+      { to: '/governance', label: 'Security & AUMS ERP', icon: '🛡️' },
+      { to: '/admin', label: 'System Health & Metrics', icon: '📊' },
       { to: '/profile', label: 'My Profile & ID', icon: '👤' },
     ]
   }
 
   // Default: Student
   return [
-    { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+    { to: '/', label: 'Student Cockpit', icon: '🏠', end: true },
     { to: '/classrooms', label: 'Study Classrooms', icon: '🪑' },
     { to: '/academic-scheduling', label: 'My Timetable', icon: '📅' },
-    { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
-    { to: '/facilities', label: 'Prototyping Labs', icon: '🧪' },
+    { to: '/facilities', label: 'Innovation Labs & 3D', icon: '🧪' },
     { to: '/events', label: 'Campus Events', icon: '🎤' },
+    { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
     { to: '/profile', label: 'My Profile & ID', icon: '👤' },
   ]
 }
@@ -118,7 +119,6 @@ export default function AppShell() {
   const { user, logout } = useAuth()
   const nav = navFor(user?.role)
   const [isNotifOpen, setIsNotifOpen] = useState(false)
-  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
@@ -157,7 +157,7 @@ export default function AppShell() {
             </div>
           </div>
 
-          {/* Right Header: Role, Notif Bell, Switcher, Logout */}
+          {/* Right Header: Role, Notif Bell, Logout */}
           <div className="flex items-center gap-2.5">
             {/* Persona Indicator Link to Profile */}
             <Link
@@ -172,16 +172,6 @@ export default function AppShell() {
                 {ROLE_LABELS[user?.role] || user?.role}
               </span>
             </Link>
-
-            {/* Quick Switch Persona Button */}
-            <button
-              onClick={() => setIsSwitcherOpen(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors shadow-2xs"
-              title="Switch demo persona"
-            >
-              <span>🔄</span>
-              <span className="hidden md:inline">Switch Role</span>
-            </button>
 
             {/* Notification Bell */}
             <button
@@ -246,8 +236,8 @@ export default function AppShell() {
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}`}>
                   {ROLE_LABELS[user?.role]}
                 </span>
-                <span className="text-[11px] text-brand-600 font-semibold cursor-pointer hover:underline" onClick={() => setIsSwitcherOpen(true)}>
-                  Change
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold border border-emerald-200">
+                  Active Session
                 </span>
               </div>
             </div>
@@ -261,7 +251,6 @@ export default function AppShell() {
 
       {/* Modals & Drawers */}
       <NotificationDrawer isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
-      <QuickRoleSwitcherModal isOpen={isSwitcherOpen} onClose={() => setIsSwitcherOpen(false)} />
     </div>
   )
 }

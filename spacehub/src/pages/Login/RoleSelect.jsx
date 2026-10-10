@@ -16,6 +16,7 @@ const ROLE_ORDER = [
   ROLES.CLASS_REP,
   ROLES.CLASS_ADVISOR,
   ROLES.FACULTY,
+  ROLES.HPC_FACULTY,
   ROLES.LAB_ASSISTANT,
   ROLES.LAB_ADMIN,
   ROLES.RESOURCE_ADMIN,
@@ -28,6 +29,7 @@ const ROLE_ICON = {
   [ROLES.CLASS_REP]: '🗂️',
   [ROLES.CLASS_ADVISOR]: '🧑‍💼',
   [ROLES.FACULTY]: '🧑‍🏫',
+  [ROLES.HPC_FACULTY]: '⚡',
   [ROLES.LAB_ASSISTANT]: '🛠️',
   [ROLES.LAB_ADMIN]: '🔬',
   [ROLES.RESOURCE_ADMIN]: '🗝️',
@@ -84,7 +86,7 @@ export default function RoleSelect() {
             Unified Campus Resource Management, Academic Scheduling, and Lost &amp; Found Platform
           </p>
           <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
-            <span>●</span> All 9 RBAC University Roles Supported
+            <span>●</span> All 10 RBAC University Roles Supported
           </div>
         </div>
 

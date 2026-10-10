@@ -847,3 +847,14 @@ export async function getUtilizationStats() {
     unclaimedLostItems: unclaimedLostItems || 0,
   }
 }
+
+// HPC Cluster Operations
+export {
+  getHpcOverview,
+  listHpcNodes,
+  updateHpcNodeStatus,
+  listHpcJobs,
+  listHpcIncidents,
+  createHpcIncident,
+} from '../mock/mockClient'
+

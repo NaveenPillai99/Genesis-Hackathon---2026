@@ -217,6 +217,120 @@ function freshDb() {
       },
     ],
     maintenanceReports: [],
+    hpcNodes: [
+      {
+        id: 'node-gpu-01',
+        name: 'CCE-DGX-A100-01',
+        clusterId: 'cce-hpc-cluster',
+        status: 'busy',
+        cpuCores: 64,
+        memoryGb: 256,
+        gpuCount: 4,
+        gpuModel: 'NVIDIA A100 80GB',
+        cpuUtilizationPct: 78.2,
+        memoryUtilizationPct: 64.0,
+        gpuUtilizationPct: 92.5,
+        activeJobs: 2,
+        queuedJobs: 1,
+        totalNodeHoursServed: 2450.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Primary deep learning research node',
+      },
+      {
+        id: 'node-gpu-02',
+        name: 'CCE-DGX-A100-02',
+        clusterId: 'cce-hpc-cluster',
+        status: 'idle',
+        cpuCores: 64,
+        memoryGb: 256,
+        gpuCount: 4,
+        gpuModel: 'NVIDIA A100 80GB',
+        cpuUtilizationPct: 14.5,
+        memoryUtilizationPct: 22.0,
+        gpuUtilizationPct: 5.0,
+        activeJobs: 0,
+        queuedJobs: 0,
+        totalNodeHoursServed: 1890.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Available for student thesis jobs',
+      },
+      {
+        id: 'node-cpu-01',
+        name: 'CCE-EPYC-Compute-01',
+        clusterId: 'cce-hpc-cluster',
+        status: 'busy',
+        cpuCores: 128,
+        memoryGb: 512,
+        gpuCount: 0,
+        gpuModel: 'None',
+        cpuUtilizationPct: 88.4,
+        memoryUtilizationPct: 72.0,
+        gpuUtilizationPct: 0.0,
+        activeJobs: 4,
+        queuedJobs: 2,
+        totalNodeHoursServed: 5600.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Monte Carlo simulation partition',
+      },
+      {
+        id: 'node-cpu-02',
+        name: 'CCE-EPYC-Compute-02',
+        clusterId: 'cce-hpc-cluster',
+        status: 'maintenance',
+        cpuCores: 128,
+        memoryGb: 512,
+        gpuCount: 0,
+        gpuModel: 'None',
+        cpuUtilizationPct: 0.0,
+        memoryUtilizationPct: 0.0,
+        gpuUtilizationPct: 0.0,
+        activeJobs: 0,
+        queuedJobs: 0,
+        totalNodeHoursServed: 4100.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Scheduled ECC RAM replacement by vendor support',
+      },
+    ],
+    hpcJobs: [
+      {
+        id: 'job-01',
+        allocationId: 'hpc-001',
+        userId: 'user-student-1',
+        userName: 'Aarav Menon',
+        jobName: 'ResNet-50 Distributed Pretraining',
+        nodeId: 'node-gpu-01',
+        status: 'running',
+        requestedNodes: 1,
+        gpuRequested: 2,
+        cpuHoursUsed: 14.2,
+        startedAt: new Date().toISOString(),
+      },
+      {
+        id: 'job-02',
+        allocationId: 'hpc-002',
+        userId: 'user-faculty-1',
+        userName: 'Dr Thilaga M',
+        jobName: 'Transformer Architecture Search',
+        nodeId: 'node-gpu-01',
+        status: 'running',
+        requestedNodes: 1,
+        gpuRequested: 2,
+        cpuHoursUsed: 32.0,
+        startedAt: new Date().toISOString(),
+      },
+    ],
+    hpcIncidents: [
+      {
+        id: 'inc-01',
+        nodeId: 'node-cpu-02',
+        incidentType: 'scheduled_maintenance',
+        severity: 'warning',
+        reportedBy: 'Dr Radhika N',
+        description: 'DIMM slot 4 ECC multi-bit error detected during routine diagnostic run. Replaced memory module pending burn-in validation.',
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      },
+    ],
   }
 }
 
@@ -1240,6 +1354,83 @@ export async function simulateEGovernanceSync() {
     synced_records: 42,
     message: 'Simulated synchronization succeeded against synthetic university roster.',
   }
+}
+
+// ------------------------------------------------ HPC Operations
+export async function getHpcOverview() {
+  const nodes = db.hpcNodes || []
+  const jobs = db.hpcJobs || []
+  const total = nodes.length
+  const working = nodes.filter((n) => n.status === 'idle' || n.status === 'busy').length
+  const idle = nodes.filter((n) => n.status === 'idle').length
+  const busy = nodes.filter((n) => n.status === 'busy').length
+  const offline = nodes.filter((n) => n.status === 'offline').length
+  const maintenance = nodes.filter((n) => n.status === 'maintenance').length
+  const activeJobs = jobs.filter((j) => j.status === 'running').length
+  const queuedJobs = jobs.filter((j) => j.status === 'queued').length
+  return {
+    cluster_id: 'cce-hpc-cluster',
+    cluster_name: 'Amrita Center for Computational Engineering HPC',
+    total_nodes: total,
+    working_nodes: working,
+    idle_nodes: idle,
+    busy_nodes: busy,
+    offline_nodes: offline,
+    maintenance_nodes: maintenance,
+    available_compute_capacity_pct: total > 0 ? (idle / total) * 100 : 0,
+    active_jobs: activeJobs,
+    queued_jobs: queuedJobs,
+    cpu_utilization_pct: 60.3,
+    memory_utilization_pct: 52.6,
+    gpu_utilization_pct: 48.7,
+    node_hours_consumed: 14040.0,
+    failed_jobs_24h: 0,
+    operational_alerts: 1,
+    telemetry_type: 'SYNTHETIC_DEMO_TELEMETRY',
+    telemetry_notice: 'DEMO DATA: Synthetic cluster telemetry for hackathon evaluation. Real SLURM / Prometheus exporter can be wired via REST collector.',
+    last_telemetry_sync: new Date().toISOString(),
+  }
+}
+
+export async function listHpcNodes() {
+  return [...(db.hpcNodes || [])]
+}
+
+export async function updateHpcNodeStatus(nodeId, { status, notes }) {
+  return mutate((d) => {
+    const node = (d.hpcNodes || []).find((n) => n.id === nodeId)
+    if (!node) throw new Error('HPC Node not found')
+    node.status = status
+    if (notes !== undefined) node.notes = notes
+    node.lastHeartbeat = new Date().toISOString()
+    return node
+  })
+}
+
+export async function listHpcJobs() {
+  return [...(db.hpcJobs || [])]
+}
+
+export async function listHpcIncidents() {
+  return [...(db.hpcIncidents || [])]
+}
+
+export async function createHpcIncident({ nodeId, incidentType, severity, description, reportedBy }) {
+  return mutate((d) => {
+    const inc = {
+      id: newId('inc'),
+      nodeId,
+      incidentType: incidentType || 'operational_fault',
+      severity: severity || 'warning',
+      description,
+      reportedBy: reportedBy || 'Dr Radhika N',
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    }
+    if (!d.hpcIncidents) d.hpcIncidents = []
+    d.hpcIncidents.unshift(inc)
+    return inc
+  })
 }
 
 // ----------------------------------------------------------- misc exports

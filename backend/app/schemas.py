@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 
 # Auth & User
 class UserBase(BaseModel):
@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     role: str
     department: Optional[str] = None
     class_section: Optional[str] = None
+    assigned_facility_id: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -17,9 +18,7 @@ class UserResponse(UserBase):
     id: str
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LoginRequest(BaseModel):
     email: str
@@ -29,6 +28,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+    permissions: List[str] = []
 
 class ProfileUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -59,16 +59,22 @@ class RoomResponse(BaseModel):
     has_audio: bool
     notes: Optional[str] = None
     is_under_maintenance: bool
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+class RoomSlotStatus(BaseModel):
+    slot_id: str
+    label: str
+    start_time: str
+    end_time: str
+    is_free: bool
+    status: str  # 'free', 'class_scheduled', 'booked', 'maintenance'
+    course_name: Optional[str] = None
+    booked_by: Optional[str] = None
 
-class RoomSearchQuery(BaseModel):
-    date: Optional[str] = None
-    slot_id: Optional[str] = None
-    building: Optional[str] = None
-    min_capacity: Optional[int] = None
-    type: Optional[str] = None
+class RoomAvailabilityResponse(BaseModel):
+    room: RoomResponse
+    date: str
+    slots: List[RoomSlotStatus]
 
 class TimetableSlotResponse(BaseModel):
     id: str
@@ -82,16 +88,14 @@ class TimetableSlotResponse(BaseModel):
     faculty: Optional[str] = None
     class_section: Optional[str] = None
     advisor: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Bookings
 class BookingCreate(BaseModel):
     room_id: str
     booking_date: str
     slot_id: str
-    purpose: str
+    purpose: Optional[str] = None
 
 class BookingResponse(BaseModel):
     id: str
@@ -106,11 +110,12 @@ class BookingResponse(BaseModel):
     status: str
     created_at: datetime
     checked_in_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+class BookingOverrideRequest(BaseModel):
+    override_reason: str
 
-# Timetable Change Requests
+# Timetable Change Proposal
 class TimetableChangeCreate(BaseModel):
     course_code: str
     course_name: str
@@ -148,29 +153,27 @@ class TimetableChangeResponse(BaseModel):
     approver_name: Optional[str] = None
     review_notes: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
 
 # Events
-class EventRequestCreate(BaseModel):
+class EventCreate(BaseModel):
     name: str
+    organizer: str
     venue_id: str
     event_date: str
     start_slot: str
     end_slot: str
-    expected_audience: int
+    expected_audience: int = 100
     level: str = "department"
     is_academic: bool = True
     has_external_guests: bool = False
     av_requirements: Optional[str] = None
-    purpose: str
+    purpose: Optional[str] = None
 
-class EventReviewRequest(BaseModel):
+class EventReview(BaseModel):
     decision: str  # 'approved', 'declined'
-    rejection_reason: Optional[str] = None
-    admin_notes: Optional[str] = None
+    notes: Optional[str] = None
 
 class EventResponse(BaseModel):
     id: str
@@ -186,15 +189,9 @@ class EventResponse(BaseModel):
     is_academic: bool
     has_external_guests: bool
     priority_score: int
-    av_requirements: Optional[str] = None
-    purpose: Optional[str] = None
     status: str
-    admin_notes: Optional[str] = None
-    rejection_reason: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Facilities
 class FacilityResponse(BaseModel):
@@ -209,18 +206,14 @@ class FacilityResponse(BaseModel):
     image: str
     status: str
     maintenance_reason: Optional[str] = None
-    responsible_staff_id: Optional[str] = None
-    responsible_staff_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FacilityBookingCreate(BaseModel):
     facility_id: str
     booking_date: str
     slot_id: str
     duration_hours: float = 1.0
-    project_title: str
+    project_title: Optional[str] = None
 
 class FacilityBookingResponse(BaseModel):
     id: str
@@ -233,10 +226,9 @@ class FacilityBookingResponse(BaseModel):
     project_title: Optional[str] = None
     status: str
     created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
-
+# HPC Schemas
 class HPCCreate(BaseModel):
     project_name: str
     node_hours: int
@@ -253,9 +245,78 @@ class HPCResponse(BaseModel):
     status: str
     reason: Optional[str] = None
     created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+class HPCNodeResponse(BaseModel):
+    id: str
+    name: str
+    cluster_id: str
+    status: str
+    cpu_cores: int
+    memory_gb: int
+    gpu_count: int
+    gpu_model: str
+    cpu_utilization_pct: float
+    memory_utilization_pct: float
+    gpu_utilization_pct: float
+    active_jobs: int
+    queued_jobs: int
+    total_node_hours_served: float
+    last_heartbeat: datetime
+    notes: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class HPCNodeStatusUpdate(BaseModel):
+    status: str  # 'healthy', 'busy', 'idle', 'offline', 'maintenance'
+    notes: Optional[str] = None
+
+class HPCJobResponse(BaseModel):
+    id: str
+    allocation_id: Optional[str] = None
+    user_id: str
+    user_name: str
+    job_name: str
+    node_id: Optional[str] = None
+    status: str
+    requested_nodes: int
+    gpu_requested: int
+    cpu_hours_used: float
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class HPCIncidentCreate(BaseModel):
+    node_id: str
+    incident_type: str
+    severity: str = "warning"
+    description: str
+
+class HPCIncidentResponse(BaseModel):
+    id: str
+    node_id: str
+    incident_type: str
+    severity: str
+    reported_by: str
+    description: str
+    status: str
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class HPCOverviewResponse(BaseModel):
+    total_nodes: int
+    healthy_nodes: int
+    busy_nodes: int
+    idle_nodes: int
+    offline_nodes: int
+    maintenance_nodes: int
+    available_capacity_pct: float
+    active_jobs_count: int
+    queued_jobs_count: int
+    pending_allocations_count: int
+    avg_cpu_utilization: float
+    avg_gpu_utilization: float
+    telemetry_source: str = "SYNTHETIC_TELEMETRY_ENGINE (SIMULATED FOR DEMONSTRATION)"
 
 # Lost & Found
 class LostFoundCreate(BaseModel):
@@ -294,9 +355,7 @@ class ItemClaimResponse(BaseModel):
     status: str
     handler_notes: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CustodyLogResponse(BaseModel):
     id: str
@@ -308,9 +367,7 @@ class CustodyLogResponse(BaseModel):
     to_custodian: Optional[str] = None
     notes: Optional[str] = None
     timestamp: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LostFoundResponse(BaseModel):
     id: str
@@ -335,9 +392,7 @@ class LostFoundResponse(BaseModel):
     created_at: datetime
     claims: List[ItemClaimResponse] = []
     custody_logs: List[CustodyLogResponse] = []
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Notifications
 class NotificationResponse(BaseModel):
@@ -348,9 +403,7 @@ class NotificationResponse(BaseModel):
     link: Optional[str] = None
     is_read: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Audit Log
 class AuditLogResponse(BaseModel):
@@ -363,6 +416,4 @@ class AuditLogResponse(BaseModel):
     entity_id: str
     details: Optional[str] = None
     timestamp: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

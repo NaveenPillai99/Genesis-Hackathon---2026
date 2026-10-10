@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.schemas import LoginRequest, TokenResponse, UserResponse
-from app.auth import verify_password, create_access_token, get_current_user, record_audit
+from app.auth import verify_password, create_access_token, get_current_user, record_audit, get_user_permissions
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -15,9 +15,10 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
-    token = create_access_token({"sub": user.id, "role": user.role})
+    perms = sorted(list(get_user_permissions(user, db)))
+    token = create_access_token({"sub": user.id, "role": user.role, "perms": perms})
     record_audit(db, user.id, user.name, user.role, "LOGIN", "USER", user.id, "Logged in via password")
-    return TokenResponse(access_token=token, user=user)
+    return TokenResponse(access_token=token, user=user, permissions=perms)
 
 @router.get("/demo-users", response_model=list[UserResponse])
 def get_demo_users(db: Session = Depends(get_db)):
@@ -45,9 +46,10 @@ def quick_login(user_id: str, db: Session = Depends(get_db)):
         user = db.query(User).filter(User.role == resolved_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Demo account not found")
-    token = create_access_token({"sub": user.id, "role": user.role})
+    perms = sorted(list(get_user_permissions(user, db)))
+    token = create_access_token({"sub": user.id, "role": user.role, "perms": perms})
     record_audit(db, user.id, user.name, user.role, "QUICK_LOGIN", "USER", user.id, f"Switched to {user.role}")
-    return TokenResponse(access_token=token, user=user)
+    return TokenResponse(access_token=token, user=user, permissions=perms)
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):

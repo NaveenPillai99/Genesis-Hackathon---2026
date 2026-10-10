@@ -6,7 +6,7 @@ from app.database import engine, Base
 from app.seed import seed_database
 from app.routers import (
     auth_routes, classroom_routes, timetable_routes, event_routes,
-    facility_routes, lost_found_routes, notification_routes,
+    facility_routes, hpc_routes, lost_found_routes, notification_routes,
     audit_routes, analytics_routes, egovernance_routes
 )
 
@@ -41,6 +41,7 @@ app.include_router(classroom_routes.router, prefix=settings.API_V1_STR)
 app.include_router(timetable_routes.router, prefix=settings.API_V1_STR)
 app.include_router(event_routes.router, prefix=settings.API_V1_STR)
 app.include_router(facility_routes.router, prefix=settings.API_V1_STR)
+app.include_router(hpc_routes.router, prefix=settings.API_V1_STR)
 app.include_router(lost_found_routes.router, prefix=settings.API_V1_STR)
 app.include_router(notification_routes.router, prefix=settings.API_V1_STR)
 app.include_router(audit_routes.router, prefix=settings.API_V1_STR)

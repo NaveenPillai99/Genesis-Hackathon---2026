@@ -121,6 +121,7 @@ export const SEED_PROFILES = [
   { id: 'user-classrep-1', name: 'Devika Nair', role: ROLES.CLASS_REP, department: 'Int. M.Sc Data Science, VII B', email: 'devika.rep@cb.students.amrita.edu' },
   { id: 'user-classadvisor-1', name: 'Dr Devika', role: ROLES.CLASS_ADVISOR, department: 'Mathematics (Class Advisor, VII B)', email: 'devika.advisor@cb.amrita.edu' },
   { id: 'user-faculty-1', name: 'Dr Thilaga M', role: ROLES.FACULTY, department: 'CSE / Mathematics', email: 'thilaga@cb.amrita.edu' },
+  { id: 'user-hpcfaculty-1', name: 'Dr Radhika N', role: ROLES.HPC_FACULTY, department: 'Centre for Computational Engineering', email: 'radhika.hpc@cb.amrita.edu' },
   { id: 'user-labassist-1', name: 'Mr Suresh Kumar', role: ROLES.LAB_ASSISTANT, department: 'HPC & Innovation Lab', email: 'suresh.lab@cb.amrita.edu' },
   { id: 'user-labadmin-1', name: 'Dr Anand Shenoy', role: ROLES.LAB_ADMIN, department: 'Computational Engineering', email: 'anand.labadmin@cb.amrita.edu' },
   { id: 'user-resourceadmin-1', name: 'Mr Ramesh Iyer', role: ROLES.RESOURCE_ADMIN, department: 'Event & Space Office', email: 'ramesh.admin@cb.amrita.edu' },

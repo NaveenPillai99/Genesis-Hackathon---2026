@@ -73,6 +73,13 @@ export const {
   listAuditLogs,
   getEGovernanceSpec,
   simulateEGovernanceSync,
+  // HPC Cluster Operations
+  getHpcOverview,
+  listHpcNodes,
+  updateHpcNodeStatus,
+  listHpcJobs,
+  listHpcIncidents,
+  createHpcIncident,
 } = impl
 
 export function initRealtime() {

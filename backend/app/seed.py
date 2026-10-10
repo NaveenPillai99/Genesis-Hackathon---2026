@@ -1,11 +1,12 @@
 from datetime import datetime
 from app.database import SessionLocal, Base, engine
 from app.models import (
-    User, Room, TimetableSlot, RoomBooking, TimetableChangeRequest,
-    EventRequest, Facility, FacilityBooking, HPCAllocation, UserInduction,
-    LostFoundItem, ItemClaim, CustodyLog, Notification, AuditLog
+    User, Role, Permission, RolePermission, ResourceAssignment,
+    Room, TimetableSlot, RoomBooking, TimetableChangeRequest,
+    EventRequest, Facility, FacilityBooking, HPCAllocation, HPCNode, HPCJob, HPCIncident,
+    UserInduction, LostFoundItem, ItemClaim, CustodyLog, Notification, AuditLog
 )
-from app.auth import hash_password
+from app.auth import hash_password, ROLE_PERMISSIONS
 
 def seed_database(db: SessionLocal = None):
     Base.metadata.create_all(bind=engine)
@@ -14,14 +15,50 @@ def seed_database(db: SessionLocal = None):
         db = SessionLocal()
         should_close = True
 
-    # Clear existing if needed
-    if db.query(User).first():
-        db.close()
-        return
+    print("Seeding synthetic CampusConnect data with strict RBAC & HPC...")
 
-    print("Seeding synthetic CampusConnect data...")
+    # 1. Seed Roles & Permissions
+    roles_data = [
+        ("student", "Student", "Access free study spaces, view timetable, search campus resources, file claims"),
+        ("class_rep", "Class Representative", "Submit class reschedule proposals, book revision rooms within cap"),
+        ("class_advisor", "Class Advisor", "Authorize reschedule proposals for assigned classes, classroom custody"),
+        ("faculty", "General Faculty", "Teaching schedule, seminar hall requests, approve compute research"),
+        ("hpc_faculty", "HPC Faculty / HPC Manager", "Dedicated HPC cluster operations, nodes, allocations, maintenance"),
+        ("lab_assistant", "Lab Assistant", "Manage assigned physical equipment, toggle maintenance, certify inductions"),
+        ("lab_admin", "Lab Administrator", "Oversight of laboratory fleets, assistants, utilization and policies"),
+        ("resource_admin", "Central Resource Admin", "Campus resource catalogue, venue allocation, conflict resolution, audit"),
+        ("lost_property_handler", "Student Welfare (Lost Property)", "Campus-wide physical custody, claims verification, secure returns"),
+        ("sys_admin", "System Administrator", "User management, RBAC matrix, system health, security audit, AUMS sync"),
+    ]
 
-    # 1. Users (All 9 Roles)
+    for r_id, r_name, r_desc in roles_data:
+        if not db.query(Role).filter(Role.id == r_id).first():
+            db.add(Role(id=r_id, name=r_name, description=r_desc))
+    db.commit()
+
+    # Permissions list
+    all_permissions = set()
+    for role_id, perms in ROLE_PERMISSIONS.items():
+        all_permissions.update(perms)
+
+    for p_id in all_permissions:
+        cat = p_id.split(".")[0]
+        if not db.query(Permission).filter(Permission.id == p_id).first():
+            db.add(Permission(id=p_id, name=p_id, category=cat, description=f"Grants {p_id} authority"))
+    db.commit()
+
+    # Map RolePermissions
+    for r_id, perms in ROLE_PERMISSIONS.items():
+        for p_id in perms:
+            exists = db.query(RolePermission).filter(
+                RolePermission.role_id == r_id,
+                RolePermission.permission_id == p_id
+            ).first()
+            if not exists:
+                db.add(RolePermission(role_id=r_id, permission_id=p_id))
+    db.commit()
+
+    # 2. Users (All 10 Personas)
     pwd = hash_password("demo123")
     demo_users = [
         User(
@@ -61,12 +98,23 @@ def seed_database(db: SessionLocal = None):
             password_hash=pwd
         ),
         User(
+            id="user-hpcfaculty-1",
+            name="Dr Radhika N",
+            email="radhika.hpc@cb.amrita.edu",
+            role="hpc_faculty",
+            department="Centre for Computational Engineering",
+            class_section=None,
+            assigned_facility_id="fac-hpc",
+            password_hash=pwd
+        ),
+        User(
             id="user-labassist-1",
             name="Mr Suresh Kumar",
             email="suresh.lab@cb.amrita.edu",
             role="lab_assistant",
             department="HPC & Innovation Lab",
             class_section=None,
+            assigned_facility_id="fac-3dprint",
             password_hash=pwd
         ),
         User(
@@ -106,146 +154,211 @@ def seed_database(db: SessionLocal = None):
             password_hash=pwd
         ),
     ]
+
     for u in demo_users:
-        db.add(u)
+        existing = db.query(User).filter(User.id == u.id).first()
+        if not existing:
+            db.add(u)
+        else:
+            existing.role = u.role
+            existing.class_section = u.class_section
+            existing.assigned_facility_id = u.assigned_facility_id
     db.commit()
 
-    # 2. Rooms
-    rooms = [
-        Room(
-            id="room-ab1-e103b",
-            name="AB1 E-103B",
-            building="AB1",
-            floor="1st Floor",
-            capacity=65,
-            type="classroom",
-            has_projector=True,
-            has_ac=False,
-            has_audio=False,
-            notes="Standard lecture classroom with Smart Board."
+    # 3. Resource Assignments (Resource-level scoping)
+    scopes = [
+        ("user-classadvisor-1", "class_section", "Int. M.Sc Data Science, VII B"),
+        ("user-classrep-1", "class_section", "Int. M.Sc Data Science, VII B"),
+        ("user-labassist-1", "facility", "fac-3dprint"),
+        ("user-labassist-1", "facility", "fac-vr"),
+        ("user-hpcfaculty-1", "facility", "fac-hpc"),
+    ]
+    for uid, stype, sid in scopes:
+        ex = db.query(ResourceAssignment).filter(
+            ResourceAssignment.user_id == uid,
+            ResourceAssignment.scope_type == stype,
+            ResourceAssignment.scope_id == sid
+        ).first()
+        if not ex:
+            db.add(ResourceAssignment(user_id=uid, scope_type=stype, scope_id=sid))
+    db.commit()
+
+    # 4. HPC Nodes (Dedicated cluster nodes with telemetry)
+    hpc_nodes = [
+        HPCNode(
+            id="node-gpu-01",
+            name="CCE-DGX-A100-01",
+            cluster_id="cce-hpc-cluster",
+            status="busy",
+            cpu_cores=64,
+            memory_gb=256,
+            gpu_count=4,
+            gpu_model="NVIDIA A100 80GB",
+            cpu_utilization_pct=78.2,
+            memory_utilization_pct=64.0,
+            gpu_utilization_pct=92.5,
+            active_jobs=2,
+            queued_jobs=1,
+            total_node_hours_served=2450.0,
+            notes="Primary deep learning research node"
         ),
-        Room(
-            id="room-ab1-e104",
-            name="AB1 E-104",
-            building="AB1",
-            floor="1st Floor",
-            capacity=70,
-            type="classroom",
-            has_projector=True,
-            has_ac=True,
-            has_audio=True,
-            notes="Smart Classroom with dual projectors and microphone."
+        HPCNode(
+            id="node-gpu-02",
+            name="CCE-DGX-A100-02",
+            cluster_id="cce-hpc-cluster",
+            status="idle",
+            cpu_cores=64,
+            memory_gb=256,
+            gpu_count=4,
+            gpu_model="NVIDIA A100 80GB",
+            cpu_utilization_pct=14.5,
+            memory_utilization_pct=22.0,
+            gpu_utilization_pct=5.0,
+            active_jobs=0,
+            queued_jobs=0,
+            total_node_hours_served=1890.0,
+            notes="Available for student thesis jobs"
         ),
-        Room(
-            id="room-ab2-201",
-            name="AB2-201",
-            building="AB2",
-            floor="2nd Floor",
-            capacity=60,
-            type="classroom",
-            has_projector=True,
-            has_ac=False,
-            has_audio=False,
-            notes="Classroom for Data Science & Business Analytics."
+        HPCNode(
+            id="node-cpu-01",
+            name="CCE-EPYC-Compute-01",
+            cluster_id="cce-hpc-cluster",
+            status="busy",
+            cpu_cores=128,
+            memory_gb=512,
+            gpu_count=0,
+            gpu_model="None",
+            cpu_utilization_pct=88.4,
+            memory_utilization_pct=72.0,
+            gpu_utilization_pct=0.0,
+            active_jobs=4,
+            queued_jobs=2,
+            total_node_hours_served=5600.0,
+            notes="Monte Carlo simulation partition"
         ),
-        Room(
-            id="room-ab2-202",
-            name="AB2-202",
-            building="AB2",
-            floor="2nd Floor",
-            capacity=55,
-            type="classroom",
-            has_projector=True,
-            has_ac=False,
-            has_audio=False,
-            notes="Seminar style classroom with tiered seating."
-        ),
-        Room(
-            id="room-ab3-301",
-            name="AB3-301",
-            building="AB3",
-            floor="3rd Floor",
-            capacity=80,
-            type="classroom",
-            has_projector=True,
-            has_ac=True,
-            has_audio=True,
-            notes="Large smart classroom."
-        ),
-        Room(
-            id="venue-audi",
-            name="Amriteshwari Auditorium",
-            building="AB3",
-            floor="Ground Floor",
-            capacity=450,
-            type="event_venue",
-            has_projector=True,
-            has_ac=True,
-            has_audio=True,
-            notes="Main university auditorium with acoustic dampening and backstage."
-        ),
-        Room(
-            id="venue-seminar-ab1",
-            name="AB1 Seminar Hall",
-            building="AB1",
-            floor="Ground Floor",
-            capacity=120,
-            type="event_venue",
-            has_projector=True,
-            has_ac=True,
-            has_audio=True,
-            notes="Air-conditioned conference and guest lecture hall."
+        HPCNode(
+            id="node-cpu-02",
+            name="CCE-EPYC-Compute-02",
+            cluster_id="cce-hpc-cluster",
+            status="maintenance",
+            cpu_cores=128,
+            memory_gb=512,
+            gpu_count=0,
+            gpu_model="None",
+            cpu_utilization_pct=0.0,
+            memory_utilization_pct=0.0,
+            gpu_utilization_pct=0.0,
+            active_jobs=0,
+            queued_jobs=0,
+            total_node_hours_served=4100.0,
+            notes="Scheduled ECC RAM replacement by vendor support"
         ),
     ]
-    for r in rooms:
-        db.add(r)
+    for n in hpc_nodes:
+        if not db.query(HPCNode).filter(HPCNode.id == n.id).first():
+            db.add(n)
     db.commit()
 
-    # 3. Timetable Slots
-    timetable = [
-        # AB1 E-103B
-        TimetableSlot(room_id="room-ab1-e103b", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e103b", day="Monday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e103b", day="Wednesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+    # 5. HPC Jobs
+    hpc_jobs = [
+        HPCJob(
+            id="job-01",
+            allocation_id="hpc-001",
+            user_id="user-student-1",
+            user_name="Aarav Menon",
+            job_name="ResNet-50 Distributed Pretraining",
+            node_id="node-gpu-01",
+            status="running",
+            requested_nodes=1,
+            gpu_requested=2,
+            cpu_hours_used=14.2
+        ),
+        HPCJob(
+            id="job-02",
+            allocation_id="hpc-002",
+            user_id="user-faculty-1",
+            user_name="Dr Thilaga M",
+            job_name="Transformer Architecture Search",
+            node_id="node-gpu-01",
+            status="running",
+            requested_nodes=1,
+            gpu_requested=2,
+            cpu_hours_used=32.0
+        ),
+    ]
+    for j in hpc_jobs:
+        if not db.query(HPCJob).filter(HPCJob.id == j.id).first():
+            db.add(j)
+    db.commit()
+
+    # 6. HPC Incident
+    if not db.query(HPCIncident).first():
+        db.add(HPCIncident(
+            id="inc-01",
+            node_id="node-cpu-02",
+            incident_type="scheduled_maintenance",
+            severity="warning",
+            reported_by="Dr Radhika N",
+            description="DIMM slot 4 ECC multi-bit error detected during routine diagnostic run. Replaced memory module pending burn-in validation.",
+            status="open"
+        ))
+        db.commit()
+
+    # 7. Rooms
+    rooms_data = [
+        Room(id="AB1-E103B", name="AB1 E103B", building="AB1", floor="E1", capacity=65, type="classroom", has_projector=True, has_ac=False, has_audio=False, notes="Home room for Int. M.Sc Data Science VII B"),
+        Room(id="room-ab1-e103b", name="AB1 E103B", building="AB1", floor="E1", capacity=65, type="classroom", has_projector=True, has_ac=False, has_audio=False, notes="Home room for Int. M.Sc Data Science VII B"),
+        Room(id="AB1-E104", name="AB1 E104", building="AB1", floor="E1", capacity=70, type="classroom", has_projector=True, has_ac=True, has_audio=True),
+        Room(id="room-ab1-e104", name="AB1 E104", building="AB1", floor="E1", capacity=70, type="classroom", has_projector=True, has_ac=True, has_audio=True),
+        Room(id="AB1-W102", name="AB1 W102", building="AB1", floor="W1", capacity=40, type="classroom", has_projector=True, has_ac=False, has_audio=False, notes="Lab-friendly layout"),
+        Room(id="AB2-201", name="AB2 201", building="AB2", floor="2", capacity=60, type="classroom", has_projector=True, has_ac=False, has_audio=False),
+        Room(id="room-ab2-202", name="AB2 202", building="AB2", floor="2", capacity=50, type="classroom", has_projector=True, has_ac=False, has_audio=False),
+        Room(id="AB2-305", name="AB2 305", building="AB2", floor="3", capacity=55, type="classroom", has_projector=True, has_ac=False, has_audio=False),
+        Room(id="VENUE-AUDITORIUM", name="Amriteshwari Auditorium", building="Admin Block", floor="1", capacity=1200, type="event_venue", has_projector=True, has_ac=True, has_audio=True, notes="University flagship hall"),
+        Room(id="VENUE-SEMINAR-AB1", name="Seminar Hall, AB1", building="AB1", floor="Ground", capacity=150, type="event_venue", has_projector=True, has_ac=True, has_audio=True),
+        Room(id="VENUE-AMPHITHEATRE", name="Campus Open Amphitheatre", building="Central Quad", floor="Outdoor", capacity=800, type="event_venue", has_projector=False, has_ac=False, has_audio=True),
+    ]
+    for r in rooms_data:
+        if not db.query(Room).filter(Room.id == r.id).first():
+            db.add(r)
+    db.commit()
+
+    # 8. Timetable Slots
+    slots_data = [
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="room-ab1-e103b", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
         TimetableSlot(room_id="room-ab1-e103b", day="Friday", slot_id="slot8", start_time="14:05", end_time="14:55", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-
-        # AB1 E-104
-        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar Rakshit", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Wednesday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Wednesday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar Rakshit", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Friday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-
-        # AB2-201
-        TimetableSlot(room_id="room-ab2-201", day="Tuesday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC343", course_name="Business Analytics", faculty="Dr Subhraaj R", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab2-201", day="Thursday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC343", course_name="Business Analytics", faculty="Dr Subhraaj R", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC343", course_name="Business Analytics", faculty="Dr Subhraaj R", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot6", start_time="12:25", end_time="13:15", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Tuesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-W102", day="Tuesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC401L", course_name="Open Lab-I", faculty="Ms Kavipriya", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Thursday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Friday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC403", course_name="Reinforcement Learning", faculty="Dr Jeyaramakrishnan", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika"),
+        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika"),
+        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika"),
     ]
-    for ts in timetable:
-        db.add(ts)
+    for s in slots_data:
+        ex = db.query(TimetableSlot).filter(
+            TimetableSlot.room_id == s.room_id,
+            TimetableSlot.day == s.day,
+            TimetableSlot.slot_id == s.slot_id
+        ).first()
+        if not ex:
+            db.add(s)
     db.commit()
 
-    # 4. Facilities
-    facilities = [
-        Facility(
-            id="fac-hpc",
-            name="HPC GPU Cluster",
-            type="compute",
-            location="Centre for Computational Engineering, AB4",
-            description="Shared GPU/CPU cluster with 8x NVIDIA A100 nodes for deep learning training and scientific simulation.",
-            contact="hpc-support@cb.amrita.edu",
-            induction_required=True,
-            allocation_model="compute_time",
-            image="🖥️",
-            status="available",
-            responsible_staff_id="user-labassist-1",
-            responsible_staff_name="Mr Suresh Kumar"
-        ),
+    # 9. Facilities
+    facilities_data = [
         Facility(
             id="fac-3dprint",
             name="3D Rapid Prototyping Lab",
             type="equipment",
             location="Innovation Lab, AB1 Ground Floor",
-            description="Industrial FDM and SLA resin 3D printers with high-precision slicing software.",
+            description="Dual-extrusion FDM & SLA resin printers for rapid physical prototyping.",
             contact="innovationlab@cb.amrita.edu",
             induction_required=True,
             allocation_model="time_slot",
@@ -256,10 +369,10 @@ def seed_database(db: SessionLocal = None):
         ),
         Facility(
             id="fac-vr",
-            name="VR / AR Immersive Lab",
+            name="VR / AR Simulation Suite",
             type="equipment",
             location="Innovation Lab, AB1 Ground Floor",
-            description="Meta Quest 3 and HTC Vive Pro headsets with spatial tracking and development workstations.",
+            description="Meta Quest 3 and HTC Vive Pro 2 dev kits for spatial computing research.",
             contact="innovationlab@cb.amrita.edu",
             induction_required=True,
             allocation_model="time_slot",
@@ -270,282 +383,124 @@ def seed_database(db: SessionLocal = None):
         ),
         Facility(
             id="fac-electronics",
-            name="Electronics Prototyping Bench",
+            name="Electronics Prototyping Workbench",
             type="equipment",
-            location="AB2 Basement Lab",
-            description="Rigol digital oscilloscopes, SMD rework soldering stations, signal generators, Raspberry Pi & ESP32 developer kits.",
+            location="AB2 Basement, Room B04",
+            description="Digital storage oscilloscopes, SMD rework stations, logic analyzers.",
             contact="ece-lab@cb.amrita.edu",
             induction_required=False,
             allocation_model="time_slot",
             image="🔧",
-            status="maintenance",
-            maintenance_reason="Oscilloscope calibration in progress until tomorrow afternoon.",
-            responsible_staff_id="user-labassist-1",
-            responsible_staff_name="Mr Suresh Kumar"
+            status="available",
+            responsible_staff_id="user-labadmin-1",
+            responsible_staff_name="Dr Anand Shenoy"
+        ),
+        Facility(
+            id="fac-hpc",
+            name="High Performance Compute Cluster (CCE)",
+            type="compute",
+            location="Centre for Computational Engineering, AB4 Floor 3",
+            description="Shared GPU/CPU supercomputing cluster with 8x NVIDIA A100 nodes for deep learning.",
+            contact="hpc-support@cb.amrita.edu",
+            induction_required=True,
+            allocation_model="compute_time",
+            image="🖥️",
+            status="available",
+            responsible_staff_id="user-hpcfaculty-1",
+            responsible_staff_name="Dr Radhika N"
         ),
     ]
-    for f in facilities:
-        db.add(f)
+    for f in facilities_data:
+        ex = db.query(Facility).filter(Facility.id == f.id).first()
+        if not ex:
+            db.add(f)
+        else:
+            ex.responsible_staff_id = f.responsible_staff_id
     db.commit()
 
-    # 5. User Inductions
-    inductions = [
-        UserInduction(
-            user_id="user-student-1",
-            facility_id="fac-3dprint",
-            inducted_by="Mr Suresh Kumar"
-        ),
-        UserInduction(
-            user_id="user-classrep-1",
-            facility_id="fac-3dprint",
-            inducted_by="Mr Suresh Kumar"
-        ),
-        UserInduction(
-            user_id="user-classrep-1",
-            facility_id="fac-vr",
-            inducted_by="Mr Suresh Kumar"
-        ),
-    ]
-    for ind in inductions:
-        db.add(ind)
-    db.commit()
+    # 10. Sample Timetable Change Request
+    if not db.query(TimetableChangeRequest).first():
+        db.add(TimetableChangeRequest(
+            id="req-001",
+            course_code="22CSC401",
+            course_name="Deep Learning",
+            class_section="Int. M.Sc Data Science, VII B",
+            requester_id="user-classrep-1",
+            requester_name="Devika Nair",
+            original_day="Monday",
+            original_slot="slot4",
+            original_room_id="AB1-E103B",
+            proposed_day="Tuesday",
+            proposed_slot="slot6",
+            proposed_room_id="AB1-E103B",
+            proposed_date="2026-10-13",
+            reason="Faculty attending academic symposium on Monday morning; rescheduled with section agreement.",
+            status="pending"
+        ))
+        db.commit()
 
-    # 6. Sample Timetable Change Request
-    tt_req = TimetableChangeRequest(
-        id="tt-req-001",
-        course_code="22CSC401",
-        course_name="Deep Learning",
-        class_section="Int. M.Sc Data Science, VII B",
-        requester_id="user-classrep-1",
-        requester_name="Devika Nair",
-        original_day="Friday",
-        original_slot="slot2",
-        original_room_id="room-ab1-e104",
-        proposed_day="Thursday",
-        proposed_slot="slot4",
-        proposed_room_id="room-ab1-e104",
-        proposed_date="2026-10-15",
-        reason="Students participating in Inter-University Hackathon on Friday morning. Requesting reschedule to Thursday Slot 4.",
-        status="pending",
-        review_notes="Under review by Class Advisor Dr Devika and Course Faculty Dr Thilaga M."
-    )
-    db.add(tt_req)
-
-    # 7. Sample Events
-    events = [
-        EventRequest(
+    # 11. Sample Events
+    if not db.query(EventRequest).first():
+        db.add(EventRequest(
             id="evt-001",
-            name="GENESIS 2026 Annual Technology Hackathon",
-            organizer="Department of CSE & ACM Student Chapter",
+            name="GENESIS 2026 Hackathon & Tech Summit",
+            organizer="Campus Innovation & Technical Council",
             organizer_id="user-faculty-1",
-            venue_id="venue-audi",
-            event_date="2026-10-20",
+            venue_id="VENUE-AUDITORIUM",
+            event_date="2026-10-15",
             start_slot="slot2",
             end_slot="slot10",
-            expected_audience=350,
+            expected_audience=800,
             level="university",
             is_academic=True,
             has_external_guests=True,
-            priority_score=92,
-            av_requirements="Dual 4K Projection, 4 wireless mics, live video streaming setup",
-            purpose="Flagship 36-hour hackathon bringing inter-college teams together.",
-            status="approved",
-            admin_notes="Approved by Event Office. Audio technician assigned."
-        ),
-        EventRequest(
-            id="evt-002",
-            name="AI in Healthcare Research Colloquium",
-            organizer="Dr Thilaga M",
-            organizer_id="user-faculty-1",
-            venue_id="venue-seminar-ab1",
-            event_date="2026-10-22",
-            start_slot="slot4",
-            end_slot="slot6",
-            expected_audience=110,
-            level="department",
-            is_academic=True,
-            has_external_guests=False,
-            priority_score=78,
-            av_requirements="Projector and podium mic",
-            purpose="Faculty symposium on medical imaging and clinical transformers.",
-            status="pending",
-            admin_notes="Awaiting final auditorium schedule confirmation."
-        )
-    ]
-    for ev in events:
-        db.add(ev)
-    db.commit()
+            priority_score=95,
+            av_requirements="Projector, Stage Audio, 4 Cordless Mics, Live Stream Deck",
+            purpose="Flagship annual 36-hour national university hackathon.",
+            status="approved"
+        ))
+        db.commit()
 
-    # 8. Sample Lost & Found Items
-    # A) Classroom-found item (Smart Auto-routed to Class Advisor Dr Devika)
-    lost_item_1 = LostFoundItem(
-        id="lf-001",
-        report_type="found",
-        title="Casio Scientific Calculator FX-991CW",
-        category="electronics",
-        description="Black non-programmable calculator found on the 2nd row desk near the window.",
-        location_found="AB1 E-104 (1st Floor)",
-        is_classroom=True,
-        room_id="room-ab1-e104",
-        found_date="2026-10-09",
-        found_time="09:40",
-        finder_id="user-student-1",
-        finder_name="Aarav Menon",
-        current_custody="class_advisor",
-        storage_location="Class Advisor Office (Mathematics Dept, AB1 Room 214)",
-        assigned_handler_id="user-classadvisor-1",
-        assigned_handler_name="Dr Devika",
-        routing_reason="Smart Matched: Timetable slot Monday Slot 2 (Deep Learning, Int. M.Sc Data Science VII B). Automatically routed to Class Advisor Dr Devika.",
-        status="in_custody"
-    )
-    db.add(lost_item_1)
-    db.commit()
+    # 12. Sample Lost and Found
+    if not db.query(LostFoundItem).first():
+        db.add(LostFoundItem(
+            id="lf-001",
+            report_type="found",
+            title="Casio FX-991CW Scientific Calculator",
+            category="electronics",
+            description="Black scientific calculator with green engraved sticker 'VII B DS' on the casing.",
+            location_found="Classroom AB1-E104, Desk Row 3",
+            is_classroom=True,
+            room_id="AB1-E104",
+            found_date="2026-10-10",
+            found_time="10:35",
+            finder_id="user-student-1",
+            finder_name="Aarav Menon",
+            current_custody="class_advisor",
+            storage_location="Desk of Class Advisor Dr Devika (AB1-204)",
+            assigned_handler_id="user-classadvisor-1",
+            assigned_handler_name="Dr Devika",
+            routing_reason="Classroom Slot Match: Automatically routed to Class Advisor Dr Devika.",
+            status="in_custody"
+        ))
+        db.commit()
 
-    # Custody log for item 1
-    db.add(CustodyLog(
-        item_id="lf-001",
-        actor_id="user-student-1",
-        actor_name="Aarav Menon",
-        action="reported",
-        from_custodian="Finder",
-        to_custodian="Class Advisor Dr Devika",
-        notes="Finder handed over to Dr Devika after class."
-    ))
-
-    # B) Non-classroom found item (Smart Auto-routed to Student Welfare Ms Priya Balan)
-    lost_item_2 = LostFoundItem(
-        id="lf-002",
-        report_type="found",
-        title="Navy Blue Campus Backpack (Wildcraft)",
-        category="bags",
-        description="Wildcraft navy blue backpack with a water bottle and spiral notebooks inside.",
-        location_found="AB2 Central Lawn benches",
-        is_classroom=False,
-        room_id=None,
-        found_date="2026-10-10",
-        found_time="13:20",
-        finder_id="user-student-1",
-        finder_name="Aarav Menon",
-        current_custody="student_welfare",
-        storage_location="Student Welfare Lost Property Locker #4",
-        assigned_handler_id="user-welfare-1",
-        assigned_handler_name="Ms Priya Balan",
-        routing_reason="Outdoor / Common Campus Location. Automatically routed to Student Welfare Office.",
-        status="claim_pending"
-    )
-    db.add(lost_item_2)
-    db.commit()
-
-    # Claim for item 2
-    claim_2 = ItemClaim(
-        id="claim-001",
-        item_id="lf-002",
-        claimant_id="user-classrep-1",
-        claimant_name="Devika Nair",
-        proof_description="Contains Data Science notebooks with student name 'Devika N' on page 1 and a silver steel water bottle.",
-        contact_phone="+91 98765 43210",
-        status="pending",
-        handler_notes="Claim submitted; awaiting in-person ID verification."
-    )
-    db.add(claim_2)
-
-    db.add(CustodyLog(
-        item_id="lf-002",
-        actor_id="user-welfare-1",
-        actor_name="Ms Priya Balan",
-        action="claim_filed",
-        from_custodian="Student Welfare",
-        to_custodian="Student Welfare",
-        notes="Claim filed by Devika Nair; verification pending."
-    ))
-
-    # C) Returned item example
-    lost_item_3 = LostFoundItem(
-        id="lf-003",
-        report_type="found",
-        title="Hostel Room Key with Brass Ring",
-        category="keys",
-        description="Key labeled 'HB2-314' on a circular brass ring.",
-        location_found="Library Ground Floor Reading Hall",
-        is_classroom=False,
-        room_id=None,
-        found_date="2026-10-08",
-        found_time="16:00",
-        finder_id="user-student-1",
-        finder_name="Aarav Menon",
-        current_custody="student_welfare",
-        storage_location="Student Welfare Desk",
-        assigned_handler_id="user-welfare-1",
-        assigned_handler_name="Ms Priya Balan",
-        routing_reason="Common Facility: Routed to Student Welfare.",
-        status="returned",
-        return_date="2026-10-09",
-        handover_notes="Returned to student after verification of hostel room allotment card."
-    )
-    db.add(lost_item_3)
-
-    # 9. Sample Notifications
-    notifications = [
-        Notification(
-            recipient_id="user-classrep-1",
-            title="Classroom Booking Confirmed",
-            message="Your reservation for AB1-E104 on Friday Slot 8 has been confirmed.",
-            category="booking",
-            link="/classrooms"
-        ),
-        Notification(
-            recipient_id="user-classadvisor-1",
-            title="Action Required: Lost Item Auto-Routed",
-            message="A calculator found in AB1-E104 during your class slot was automatically routed to your custody.",
-            category="lost_found",
-            link="/lost-found"
-        ),
-        Notification(
-            recipient_id="user-classadvisor-1",
-            title="Timetable Change Request Pending",
-            message="Class Rep Devika Nair requested to move Deep Learning from Friday Slot 2 to Thursday Slot 4.",
-            category="timetable",
-            link="/academic-scheduling"
-        ),
-        Notification(
-            recipient_id="user-welfare-1",
-            title="New Claim on Wildcraft Backpack",
-            message="Devika Nair filed a claim for the navy blue backpack in your custody.",
-            category="lost_found",
-            link="/lost-found"
-        ),
-    ]
-    for n in notifications:
-        db.add(n)
-
-    # 10. Sample Audit Log
-    audits = [
-        AuditLog(
+    # 13. Audit Log
+    if not db.query(AuditLog).first():
+        db.add(AuditLog(
             actor_id="user-sysadmin-1",
             actor_name="Prof. K. R. Ramakrishnan",
             actor_role="sys_admin",
             action="SYSTEM_INIT",
             entity_type="SYSTEM",
             entity_id="ROOT",
-            details="CampusConnect production pilot initialized with synthetic timetable and facility records."
-        ),
-        AuditLog(
-            actor_id="user-resourceadmin-1",
-            actor_name="Mr Ramesh Iyer",
-            actor_role="resource_admin",
-            action="EVENT_APPROVE",
-            entity_type="EVENT",
-            entity_id="evt-001",
-            details="Approved GENESIS 2026 Hackathon in Amriteshwari Auditorium."
-        ),
-    ]
-    for a in audits:
-        db.add(a)
+            details="CampusConnect production pilot initialized with strict RBAC, resource scoping, and HPC operations."
+        ))
+        db.commit()
 
-    db.commit()
     if should_close:
         db.close()
-    print("Seed complete! All 9 personas, rooms, timetables, facilities, and lost-found items populated.")
+    print("Seed complete! 10 personas, roles, permissions, scopes, and HPC telemetry populated.")
 
 if __name__ == "__main__":
     seed_database()

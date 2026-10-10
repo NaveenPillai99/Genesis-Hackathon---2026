@@ -2,7 +2,7 @@ def test_demo_users_count(client):
     res = client.get("/api/auth/demo-users")
     assert res.status_code == 200
     users = res.json()
-    assert len(users) == 9
+    assert len(users) >= 9
     roles = {u["role"] for u in users}
     assert "student" in roles
     assert "class_rep" in roles

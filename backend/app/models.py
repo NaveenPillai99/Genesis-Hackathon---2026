@@ -9,6 +9,37 @@ from app.database import Base
 def gen_id():
     return str(uuid.uuid4())
 
+class Role(Base):
+    __tablename__ = "roles"
+
+    id = Column(String, primary_key=True)  # 'student', 'class_rep', 'class_advisor', 'faculty', 'hpc_faculty', 'lab_assistant', 'lab_admin', 'resource_admin', 'lost_property_handler', 'sys_admin'
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    id = Column(String, primary_key=True)  # e.g. 'event.view', 'event.request.create', 'hpc.manage_nodes'
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=False)  # 'event', 'classroom', 'timetable', 'facility', 'hpc', 'lost_found', 'audit', 'system'
+    description = Column(String, nullable=True)
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    role_id = Column(String, ForeignKey("roles.id"), nullable=False, index=True)
+    permission_id = Column(String, ForeignKey("permissions.id"), nullable=False, index=True)
+
+class ResourceAssignment(Base):
+    __tablename__ = "resource_assignments"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    scope_type = Column(String, nullable=False)  # 'class_section', 'facility', 'department', 'room'
+    scope_id = Column(String, nullable=False)    # e.g. 'Int. M.Sc Data Science, VII B', 'fac-3dprint', 'fac-hpc'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class User(Base):
     __tablename__ = "users"
 
@@ -18,6 +49,7 @@ class User(Base):
     role = Column(String, index=True, nullable=False)
     department = Column(String, nullable=True)
     class_section = Column(String, nullable=True)
+    assigned_facility_id = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -25,6 +57,7 @@ class User(Base):
     # Relationships
     bookings = relationship("RoomBooking", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    resource_assignments = relationship("ResourceAssignment", backref="user", cascade="all, delete-orphan")
 
 class Department(Base):
     __tablename__ = "departments"
@@ -179,6 +212,55 @@ class HPCAllocation(Base):
     status = Column(String, default="pending")  # 'pending', 'approved', 'declined'
     reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class HPCNode(Base):
+    __tablename__ = "hpc_nodes"
+
+    id = Column(String, primary_key=True)  # 'node-gpu-01'
+    name = Column(String, nullable=False)  # 'CCE-DGX-A100-01'
+    cluster_id = Column(String, default="cce-hpc-cluster")
+    status = Column(String, default="healthy", index=True)  # 'healthy', 'busy', 'idle', 'offline', 'maintenance'
+    cpu_cores = Column(Integer, default=64)
+    memory_gb = Column(Integer, default=256)
+    gpu_count = Column(Integer, default=4)
+    gpu_model = Column(String, default="NVIDIA A100 80GB")
+    cpu_utilization_pct = Column(Float, default=45.0)
+    memory_utilization_pct = Column(Float, default=60.0)
+    gpu_utilization_pct = Column(Float, default=85.0)
+    active_jobs = Column(Integer, default=2)
+    queued_jobs = Column(Integer, default=1)
+    total_node_hours_served = Column(Float, default=1240.0)
+    last_heartbeat = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text, nullable=True)
+
+class HPCJob(Base):
+    __tablename__ = "hpc_jobs"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    allocation_id = Column(String, nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_name = Column(String, nullable=False)
+    job_name = Column(String, nullable=False)
+    node_id = Column(String, nullable=True)
+    status = Column(String, default="running")  # 'running', 'queued', 'completed', 'failed'
+    requested_nodes = Column(Integer, default=1)
+    gpu_requested = Column(Integer, default=1)
+    cpu_hours_used = Column(Float, default=4.5)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+
+class HPCIncident(Base):
+    __tablename__ = "hpc_incidents"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    node_id = Column(String, nullable=False)
+    incident_type = Column(String, nullable=False)  # 'scheduled_maintenance', 'thermal_throttle', 'ecc_memory_error', 'driver_crash'
+    severity = Column(String, default="warning")  # 'info', 'warning', 'critical'
+    reported_by = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    status = Column(String, default="open")  # 'open', 'resolved'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
 
 class UserInduction(Base):
     __tablename__ = "user_inductions"
