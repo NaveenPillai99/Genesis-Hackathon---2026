@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx eslint *)",
+      "Bash(chromium-cli --help)",
+      "Bash(npx --yes playwright --version)"
+    ]
+  }
+}
