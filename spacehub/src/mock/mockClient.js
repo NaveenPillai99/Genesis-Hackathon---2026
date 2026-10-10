@@ -15,10 +15,10 @@ import {
   DAY_SLOTS,
   CHECK_IN_GRACE_MINUTES,
   EVENT_STATUS,
-  FACILITY_BOOKING_STATUS,
-  HPC_STATUS,
+  FACILITY_REQUEST_STATUS,
   LOST_ITEM_STATUS,
   MAINTENANCE_STATUS,
+  NEEDS_FACILITY_MENTOR,
   ROOM_TYPES,
   WEEKLY_HOUR_CAP,
 } from '../lib/constants'
@@ -40,7 +40,6 @@ import {
 } from './seedData'
 
 const STORAGE_KEY = 'spacehub_db_v1'
-const HPC_AUTO_APPROVE_THRESHOLD = 20 // node-hours; above this needs faculty approval
 const RECENT_BOOKER_WINDOW_DAYS = 3
 
 // ---------------------------------------------------------------- bootstrap
@@ -72,9 +71,7 @@ function freshDb() {
     blockedDates: [],
     events: [],
     facilities: SEED_FACILITIES.map((f) => ({ ...f, underMaintenance: false })),
-    facilityBookings: [],
-    inductions: [],
-    hpcAllocations: [],
+    facilityRequests: [],
     lostItems: [],
     maintenanceReports: [],
   }
@@ -393,135 +390,197 @@ export async function setFacilityMaintenance(id, underMaintenance) {
   })
 }
 
-export async function hasInduction(userId, facilityId) {
-  return db.inductions.some((i) => i.userId === userId && i.facilityId === facilityId)
-}
+// ------------------------------------------------------- facility requests
+// No induction system — access is granted per request instead.
+// Submitted -> [Faculty Approval Pending ->] Facility Admin Review ->
+// Approved / Rejected / Alternative Suggested. Students/class reps need
+// their faculty mentor's sign-off first; faculty/admin requests go straight
+// to the facility administrator (see NEEDS_FACILITY_MENTOR). Mirrors the
+// event-request pattern: a request is a hold, not a grant, until fully
+// approved; only approved requests are mutually exclusive on time.
 
-export async function listInductions({ userId, facilityId } = {}) {
-  return db.inductions.filter(
-    (i) => (!userId || i.userId === userId) && (!facilityId || i.facilityId === facilityId)
+export async function listFacilityRequests({ facilityId, mentorId, status } = {}) {
+  return db.facilityRequests.filter(
+    (r) =>
+      (!facilityId || r.facilityId === facilityId) &&
+      (!mentorId || r.mentorId === mentorId) &&
+      (!status || r.status === status)
   )
 }
 
-export async function completeInduction({ userId, facilityId, byUserId }) {
-  const already = await hasInduction(userId, facilityId)
-  if (already) return db.inductions.find((i) => i.userId === userId && i.facilityId === facilityId)
-  return mutate((d) => {
-    const record = {
-      id: newId('ind'),
-      userId,
-      facilityId,
-      completedAt: new Date().toISOString(),
-      byUserId,
-    }
-    d.inductions.push(record)
-    return record
-  })
+export async function listMyFacilityRequests(userId) {
+  return db.facilityRequests
+    .filter((r) => r.requestedBy === userId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
 }
 
-export async function listFacilityBookings({ facilityId, date } = {}) {
-  return db.facilityBookings.filter(
-    (b) => (!facilityId || b.facilityId === facilityId) && (!date || b.date === date)
-  )
-}
-
-export async function listMyFacilityBookings(userId) {
-  return db.facilityBookings
-    .filter((b) => b.userId === userId)
-    .sort((a, b) => (a.date + a.start < b.date + b.start ? 1 : -1))
-}
-
-export async function createFacilityBooking({ facilityId, userId, date, start, end, purpose }) {
+export async function requestFacilityAccess({
+  facilityId,
+  requestedBy,
+  requesterRole,
+  mentorId,
+  date,
+  start,
+  end,
+  durationMinutes,
+  nodeHoursRequested,
+  purpose,
+}) {
   const facility = db.facilities.find((f) => f.id === facilityId)
   if (!facility) throw new Error('Facility not found.')
   if (facility.underMaintenance) throw new Error('This facility is currently under maintenance.')
-  if (facility.inductionRequired) {
-    const inducted = await hasInduction(userId, facilityId)
-    if (!inducted) throw new Error('Complete the induction for this facility before booking it.')
+  if (facility.allocationModel === 'compute_time' && !nodeHoursRequested) {
+    throw new Error('Specify how many node-hours you need.')
   }
-  const clash = db.facilityBookings.some(
-    (b) =>
-      b.facilityId === facilityId &&
-      b.date === date &&
-      b.status === FACILITY_BOOKING_STATUS.BOOKED &&
-      overlaps(b.start, b.end, start, end)
-  )
-  if (clash) throw new Error('That time slot is already booked on this facility.')
 
-  const booking = {
-    id: newId('fbk'),
+  const needsMentor = NEEDS_FACILITY_MENTOR.has(requesterRole)
+  if (needsMentor && !mentorId) throw new Error('Pick a faculty mentor to approve this request first.')
+
+  const request = {
+    id: newId('freq'),
     facilityId,
-    userId,
+    requestedBy,
+    mentorId: needsMentor ? mentorId : null,
     date,
     start,
     end,
+    durationMinutes,
+    nodeHoursRequested: nodeHoursRequested || null,
     purpose: purpose?.trim() || 'Unspecified',
-    status: FACILITY_BOOKING_STATUS.BOOKED,
+    status: needsMentor ? FACILITY_REQUEST_STATUS.PENDING_MENTOR : FACILITY_REQUEST_STATUS.PENDING_FACILITY,
+    mentorDecidedBy: null,
+    mentorDecidedAt: null,
+    mentorReason: null,
+    facilityDecidedBy: null,
+    facilityDecidedAt: null,
+    facilityReason: null,
+    altDate: null,
+    altStart: null,
+    altEnd: null,
+    altNote: null,
     createdAt: new Date().toISOString(),
   }
   return mutate((d) => {
-    d.facilityBookings.push(booking)
-    return booking
+    d.facilityRequests.push(request)
+    return request
   })
 }
 
-export async function cancelFacilityBooking(id) {
-  return mutate((d) => {
-    const b = d.facilityBookings.find((x) => x.id === id)
-    if (!b) throw new Error('Booking not found.')
-    b.status = FACILITY_BOOKING_STATUS.CANCELLED
-    return b
-  })
-}
-
-// ------------------------------------------------------------------- HPC
-
-export async function requestHpcAllocation({ studentId, facultyApproverId, nodeHoursRequested, purpose }) {
-  const isLarge = nodeHoursRequested > HPC_AUTO_APPROVE_THRESHOLD
-  const allocation = {
-    id: newId('hpc'),
-    studentId,
-    facultyApproverId: facultyApproverId || null,
-    nodeHoursRequested,
-    purpose: purpose?.trim() || 'Unspecified',
-    status: isLarge ? HPC_STATUS.PENDING : HPC_STATUS.APPROVED,
-    autoApproved: !isLarge,
-    createdAt: new Date().toISOString(),
-    decidedAt: isLarge ? null : new Date().toISOString(),
-  }
-  if (isLarge && !facultyApproverId) {
-    throw new Error(
-      `Requests over ${HPC_AUTO_APPROVE_THRESHOLD} node-hours need a faculty supervisor to approve them.`
-    )
+export async function decideMentorStage(id, { decision, byUserId, reason }) {
+  const request = db.facilityRequests.find((x) => x.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_MENTOR) {
+    throw new Error('This request already moved past the mentor stage.')
   }
   return mutate((d) => {
-    d.hpcAllocations.push(allocation)
-    return allocation
+    const r = d.facilityRequests.find((x) => x.id === id)
+    r.mentorDecidedBy = byUserId
+    r.mentorDecidedAt = new Date().toISOString()
+    r.mentorReason = reason?.trim() || null
+    r.status = decision === 'approved' ? FACILITY_REQUEST_STATUS.PENDING_FACILITY : FACILITY_REQUEST_STATUS.DECLINED
+    return r
   })
 }
 
-export async function decideHpcAllocation(id, { decision, byUserId, reason }) {
-  return mutate((d) => {
-    const a = d.hpcAllocations.find((x) => x.id === id)
-    if (!a) throw new Error('Allocation request not found.')
-    a.status = decision
-    a.decidedAt = new Date().toISOString()
-    a.decidedBy = byUserId
-    a.decisionReason = reason
-    return a
-  })
-}
-
-export async function listHpcAllocations({ studentId, facultyApproverId, status } = {}) {
-  return db.hpcAllocations.filter(
-    (a) =>
-      (!studentId || a.studentId === studentId) &&
-      (!facultyApproverId || a.facultyApproverId === facultyApproverId) &&
-      (!status || a.status === status)
+function hasApprovedClash(requestId, facilityId, date, start, end) {
+  return db.facilityRequests.some(
+    (r) =>
+      r.id !== requestId &&
+      r.facilityId === facilityId &&
+      r.date === date &&
+      r.status === FACILITY_REQUEST_STATUS.APPROVED &&
+      overlaps(r.start, r.end, start, end)
   )
 }
 
-export const HPC_THRESHOLD = HPC_AUTO_APPROVE_THRESHOLD
+/** Facility administrator's decision: approve at the requested time, reject outright, or propose a different slot. */
+export async function decideFacilityStage(id, { decision, byUserId, reason, altDate, altStart, altEnd, altNote }) {
+  const request = db.facilityRequests.find((x) => x.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_FACILITY) {
+    throw new Error('This request is not awaiting facility admin review.')
+  }
+
+  const facility = db.facilities.find((f) => f.id === request.facilityId)
+
+  if (decision === 'approved') {
+    if (facility?.underMaintenance) throw new Error('This facility is currently under maintenance.')
+    if (hasApprovedClash(id, request.facilityId, request.date, request.start, request.end)) {
+      throw new Error('Another approved request already covers this facility at an overlapping time.')
+    }
+  }
+  if (decision === 'alternative') {
+    if (!altDate || !altStart || !altEnd) throw new Error('Pick a date and time to suggest.')
+    if (hasApprovedClash(id, request.facilityId, altDate, altStart, altEnd)) {
+      throw new Error('That alternative slot is already taken too — pick another.')
+    }
+  }
+
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    r.facilityDecidedBy = byUserId
+    r.facilityDecidedAt = new Date().toISOString()
+    r.facilityReason = reason?.trim() || null
+    if (decision === 'approved') {
+      r.status = FACILITY_REQUEST_STATUS.APPROVED
+    } else if (decision === 'alternative') {
+      r.status = FACILITY_REQUEST_STATUS.ALTERNATIVE_SUGGESTED
+      r.altDate = altDate
+      r.altStart = altStart
+      r.altEnd = altEnd
+      r.altNote = altNote?.trim() || null
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.DECLINED
+    }
+    return r
+  })
+}
+
+/** Requester's response to a suggested alternative time. */
+export async function respondToAlternative(id, { decision, byUserId }) {
+  const request = db.facilityRequests.find((x) => x.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.ALTERNATIVE_SUGGESTED) {
+    throw new Error('This request has no pending alternative to respond to.')
+  }
+
+  if (decision === 'accept') {
+    const facility = db.facilities.find((f) => f.id === request.facilityId)
+    if (facility?.underMaintenance) throw new Error('This facility is currently under maintenance.')
+    if (hasApprovedClash(id, request.facilityId, request.altDate, request.altStart, request.altEnd)) {
+      throw new Error('That alternative slot was just taken by someone else — ask the facility admin for another.')
+    }
+  }
+
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    if (decision === 'accept') {
+      r.date = r.altDate
+      r.start = r.altStart
+      r.end = r.altEnd
+      r.status = FACILITY_REQUEST_STATUS.APPROVED
+      r.facilityDecidedBy = byUserId
+      r.facilityDecidedAt = new Date().toISOString()
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.DECLINED
+      r.facilityReason = r.facilityReason || 'Alternative time declined by requester'
+    }
+    return r
+  })
+}
+
+export async function cancelFacilityRequest(id) {
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    if (!r) throw new Error('Request not found.')
+    if (r.status === FACILITY_REQUEST_STATUS.APPROVED) {
+      throw new Error("This request's already been approved — contact the facility administrator to cancel it.")
+    }
+    r.status = FACILITY_REQUEST_STATUS.DECLINED
+    r.facilityReason = r.facilityReason || 'Cancelled by requester'
+    return r
+  })
+}
 
 // ------------------------------------------------------------------ events
 
@@ -888,8 +947,13 @@ export async function getUtilizationStats() {
 
   const facilityUsage = db.facilities.map((f) => ({
     facility: f.name,
-    bookings: db.facilityBookings.filter((b) => b.facilityId === f.id && b.status !== FACILITY_BOOKING_STATUS.CANCELLED).length,
-    inductions: db.inductions.filter((i) => i.facilityId === f.id).length,
+    approved: db.facilityRequests.filter((r) => r.facilityId === f.id && r.status === FACILITY_REQUEST_STATUS.APPROVED).length,
+    pending: db.facilityRequests.filter(
+      (r) =>
+        r.facilityId === f.id &&
+        r.status !== FACILITY_REQUEST_STATUS.APPROVED &&
+        r.status !== FACILITY_REQUEST_STATUS.DECLINED
+    ).length,
   }))
 
   const openMaintenance = db.maintenanceReports.filter((m) => m.status !== MAINTENANCE_STATUS.RESOLVED).length

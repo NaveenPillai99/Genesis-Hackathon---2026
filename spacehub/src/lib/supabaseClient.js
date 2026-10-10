@@ -9,7 +9,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { emitDataChanged } from './bus'
-import { BOOKABLE_SLOTS, EVENT_STATUS, HPC_STATUS, MAINTENANCE_STATUS, ROOM_TYPES } from './constants'
+import { BOOKABLE_SLOTS, EVENT_STATUS, MAINTENANCE_STATUS, NEEDS_FACILITY_MENTOR, ROOM_TYPES } from './constants'
 import { computePriorityScore } from './priorityScore'
 import { weekdayForISO, weekStartISO, durationHours, overlaps } from './time'
 
@@ -18,8 +18,6 @@ export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 
 export const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null
-
-export const HPC_THRESHOLD = 20
 
 function assertConfigured() {
   if (!supabase) throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.')
@@ -273,7 +271,6 @@ export async function listFacilities() {
     location: f.location,
     description: f.description,
     contact: f.contact,
-    inductionRequired: f.induction_required,
     allocationModel: f.allocation_model,
     image: f.image,
     underMaintenance: f.under_maintenance,
@@ -290,124 +287,96 @@ export async function setFacilityMaintenance(id, underMaintenance) {
   return after(supabase.from('facilities').update({ under_maintenance: underMaintenance }).eq('id', id))
 }
 
-export async function hasInduction(userId, facilityId) {
-  assertConfigured()
-  const { data, error } = await supabase
-    .from('inductions')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('facility_id', facilityId)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  return !!data
-}
+// ------------------------------------------------------- facility requests
+// No induction system — access is granted per request instead.
+// Submitted -> [Faculty Approval Pending ->] Facility Admin Review ->
+// Approved / Rejected / Alternative Suggested. Mirrors mockClient.js
+// exactly; the facility_requests table's partial EXCLUDE constraint
+// (status = 'approved') is the final backstop against two approved
+// requests overlapping on the same facility/time.
 
-export async function listInductions({ userId, facilityId } = {}) {
-  assertConfigured()
-  let q = supabase.from('inductions').select('*')
-  if (userId) q = q.eq('user_id', userId)
-  if (facilityId) q = q.eq('facility_id', facilityId)
-  return unwrap(await q)
-}
-
-export async function completeInduction({ userId, facilityId, byUserId }) {
-  assertConfigured()
-  const already = await hasInduction(userId, facilityId)
-  if (already) return { userId, facilityId }
-  return after(
-    supabase.from('inductions').insert({ user_id: userId, facility_id: facilityId, by_user_id: byUserId }).select().single()
-  )
-}
-
-function mapFacilityBookingRow(b) {
+function mapFacilityRequestRow(r) {
   return {
-    id: b.id,
-    facilityId: b.facility_id,
-    userId: b.user_id,
-    date: b.booking_date,
-    start: b.start_time?.slice(0, 5),
-    end: b.end_time?.slice(0, 5),
-    purpose: b.purpose,
-    status: b.status,
-    createdAt: b.created_at,
+    id: r.id,
+    facilityId: r.facility_id,
+    requestedBy: r.requested_by,
+    mentorId: r.mentor_id,
+    date: r.request_date,
+    start: r.start_time?.slice(0, 5),
+    end: r.end_time?.slice(0, 5),
+    durationMinutes: r.duration_minutes,
+    nodeHoursRequested: r.node_hours_requested,
+    purpose: r.purpose,
+    status: r.status,
+    mentorDecidedBy: r.mentor_decided_by,
+    mentorDecidedAt: r.mentor_decided_at,
+    mentorReason: r.mentor_reason,
+    facilityDecidedBy: r.facility_decided_by,
+    facilityDecidedAt: r.facility_decided_at,
+    facilityReason: r.facility_reason,
+    altDate: r.alt_date,
+    altStart: r.alt_start_time?.slice(0, 5),
+    altEnd: r.alt_end_time?.slice(0, 5),
+    altNote: r.alt_note,
+    createdAt: r.created_at,
   }
 }
 
-export async function listFacilityBookings({ facilityId, date } = {}) {
+export async function listFacilityRequests({ facilityId, mentorId, status } = {}) {
   assertConfigured()
-  let q = supabase.from('facility_bookings').select('*')
+  let q = supabase.from('facility_requests').select('*')
   if (facilityId) q = q.eq('facility_id', facilityId)
-  if (date) q = q.eq('booking_date', date)
-  return unwrap(await q).map(mapFacilityBookingRow)
+  if (mentorId) q = q.eq('mentor_id', mentorId)
+  if (status) q = q.eq('status', status)
+  return unwrap(await q).map(mapFacilityRequestRow)
 }
 
-export async function listMyFacilityBookings(userId) {
+export async function listMyFacilityRequests(userId) {
   assertConfigured()
-  const rows = unwrap(await supabase.from('facility_bookings').select('*').eq('user_id', userId).order('booking_date', { ascending: false }))
-  return rows.map(mapFacilityBookingRow)
+  const rows = unwrap(
+    await supabase.from('facility_requests').select('*').eq('requested_by', userId).order('created_at', { ascending: false })
+  )
+  return rows.map(mapFacilityRequestRow)
 }
 
-export async function createFacilityBooking({ facilityId, userId, date, start, end, purpose }) {
+export async function requestFacilityAccess({
+  facilityId,
+  requestedBy,
+  requesterRole,
+  mentorId,
+  date,
+  start,
+  end,
+  durationMinutes,
+  nodeHoursRequested,
+  purpose,
+}) {
   assertConfigured()
   const facility = await getFacility(facilityId)
   if (!facility) throw new Error('Facility not found.')
   if (facility.underMaintenance) throw new Error('This facility is currently under maintenance.')
-  if (facility.inductionRequired) {
-    const inducted = await hasInduction(userId, facilityId)
-    if (!inducted) throw new Error('Complete the induction for this facility before booking it.')
+  if (facility.allocationModel === 'compute_time' && !nodeHoursRequested) {
+    throw new Error('Specify how many node-hours you need.')
   }
-  return mapFacilityBookingRow(
+
+  const needsMentor = NEEDS_FACILITY_MENTOR.has(requesterRole)
+  if (needsMentor && !mentorId) throw new Error('Pick a faculty mentor to approve this request first.')
+
+  return mapFacilityRequestRow(
     await after(
       supabase
-        .from('facility_bookings')
-        .insert({ facility_id: facilityId, user_id: userId, booking_date: date, start_time: start, end_time: end, purpose })
-        .select()
-        .single()
-    )
-  )
-}
-
-export async function cancelFacilityBooking(id) {
-  assertConfigured()
-  return after(supabase.from('facility_bookings').update({ status: 'cancelled' }).eq('id', id))
-}
-
-// ------------------------------------------------------------------- HPC --
-
-function mapHpcRow(a) {
-  return {
-    id: a.id,
-    studentId: a.student_id,
-    facultyApproverId: a.faculty_approver_id,
-    nodeHoursRequested: a.node_hours_requested,
-    purpose: a.purpose,
-    status: a.status,
-    autoApproved: a.auto_approved,
-    createdAt: a.created_at,
-    decidedAt: a.decided_at,
-    decidedBy: a.decided_by,
-    decisionReason: a.decision_reason,
-  }
-}
-
-export async function requestHpcAllocation({ studentId, facultyApproverId, nodeHoursRequested, purpose }) {
-  assertConfigured()
-  const isLarge = nodeHoursRequested > HPC_THRESHOLD
-  if (isLarge && !facultyApproverId) {
-    throw new Error(`Requests over ${HPC_THRESHOLD} node-hours need a faculty supervisor to approve them.`)
-  }
-  return mapHpcRow(
-    await after(
-      supabase
-        .from('hpc_allocations')
+        .from('facility_requests')
         .insert({
-          student_id: studentId,
-          faculty_approver_id: facultyApproverId || null,
-          node_hours_requested: nodeHoursRequested,
+          facility_id: facilityId,
+          requested_by: requestedBy,
+          mentor_id: needsMentor ? mentorId : null,
+          request_date: date,
+          start_time: start,
+          end_time: end,
+          duration_minutes: durationMinutes,
+          node_hours_requested: nodeHoursRequested || null,
           purpose,
-          status: isLarge ? HPC_STATUS.PENDING : HPC_STATUS.APPROVED,
-          auto_approved: !isLarge,
-          decided_at: isLarge ? null : new Date().toISOString(),
+          status: needsMentor ? 'pending_mentor' : 'pending_facility',
         })
         .select()
         .single()
@@ -415,27 +384,101 @@ export async function requestHpcAllocation({ studentId, facultyApproverId, nodeH
   )
 }
 
-export async function decideHpcAllocation(id, { decision, byUserId, reason }) {
+export async function decideMentorStage(id, { decision, byUserId, reason }) {
   assertConfigured()
-  return mapHpcRow(
+  return mapFacilityRequestRow(
     await after(
       supabase
-        .from('hpc_allocations')
-        .update({ status: decision, decided_at: new Date().toISOString(), decided_by: byUserId, decision_reason: reason })
+        .from('facility_requests')
+        .update({
+          status: decision === 'approved' ? 'pending_facility' : 'declined',
+          mentor_decided_by: byUserId,
+          mentor_decided_at: new Date().toISOString(),
+          mentor_reason: reason?.trim() || null,
+        })
         .eq('id', id)
+        .eq('status', 'pending_mentor')
         .select()
         .single()
     )
   )
 }
 
-export async function listHpcAllocations({ studentId, facultyApproverId, status } = {}) {
+/** Facility administrator's decision: approve at the requested time, reject outright, or propose a different slot. */
+export async function decideFacilityStage(id, { decision, byUserId, reason, altDate, altStart, altEnd, altNote }) {
   assertConfigured()
-  let q = supabase.from('hpc_allocations').select('*')
-  if (studentId) q = q.eq('student_id', studentId)
-  if (facultyApproverId) q = q.eq('faculty_approver_id', facultyApproverId)
-  if (status) q = q.eq('status', status)
-  return unwrap(await q).map(mapHpcRow)
+  if (decision === 'alternative' && (!altDate || !altStart || !altEnd)) {
+    throw new Error('Pick a date and time to suggest.')
+  }
+  return mapFacilityRequestRow(
+    await after(
+      supabase
+        .from('facility_requests')
+        .update({
+          status: decision === 'approved' ? 'approved' : decision === 'alternative' ? 'alternative_suggested' : 'declined',
+          facility_decided_by: byUserId,
+          facility_decided_at: new Date().toISOString(),
+          facility_reason: reason?.trim() || null,
+          alt_date: decision === 'alternative' ? altDate : null,
+          alt_start_time: decision === 'alternative' ? altStart : null,
+          alt_end_time: decision === 'alternative' ? altEnd : null,
+          alt_note: decision === 'alternative' ? altNote?.trim() || null : null,
+        })
+        .eq('id', id)
+        .eq('status', 'pending_facility')
+        .select()
+        .single()
+    )
+  )
+}
+
+/** Requester's response to a suggested alternative time. */
+export async function respondToAlternative(id, { decision, byUserId }) {
+  assertConfigured()
+  if (decision === 'accept') {
+    const { data: request } = await supabase.from('facility_requests').select('*').eq('id', id).single()
+    if (!request) throw new Error('Request not found.')
+    return mapFacilityRequestRow(
+      await after(
+        supabase
+          .from('facility_requests')
+          .update({
+            status: 'approved',
+            request_date: request.alt_date,
+            start_time: request.alt_start_time,
+            end_time: request.alt_end_time,
+            facility_decided_by: byUserId,
+            facility_decided_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('status', 'alternative_suggested')
+          .select()
+          .single()
+      )
+    )
+  }
+  return mapFacilityRequestRow(
+    await after(
+      supabase
+        .from('facility_requests')
+        .update({ status: 'declined', facility_reason: 'Alternative time declined by requester' })
+        .eq('id', id)
+        .eq('status', 'alternative_suggested')
+        .select()
+        .single()
+    )
+  )
+}
+
+export async function cancelFacilityRequest(id) {
+  assertConfigured()
+  return after(
+    supabase
+      .from('facility_requests')
+      .update({ status: 'declined', facility_reason: 'Cancelled by requester' })
+      .eq('id', id)
+      .neq('status', 'approved')
+  )
 }
 
 // ---------------------------------------------------------------- events --
@@ -829,11 +872,11 @@ export async function getUtilizationStats() {
   const facilities = await listFacilities()
   const facilityUsage = []
   for (const f of facilities) {
-    const [{ count: bookings }, { count: inductions }] = await Promise.all([
-      supabase.from('facility_bookings').select('id', { count: 'exact', head: true }).eq('facility_id', f.id).neq('status', 'cancelled'),
-      supabase.from('inductions').select('id', { count: 'exact', head: true }).eq('facility_id', f.id),
+    const [{ count: approved }, { count: pending }] = await Promise.all([
+      supabase.from('facility_requests').select('id', { count: 'exact', head: true }).eq('facility_id', f.id).eq('status', 'approved'),
+      supabase.from('facility_requests').select('id', { count: 'exact', head: true }).eq('facility_id', f.id).in('status', ['pending_mentor', 'pending_facility', 'alternative_suggested']),
     ])
-    facilityUsage.push({ facility: f.name, bookings: bookings || 0, inductions: inductions || 0 })
+    facilityUsage.push({ facility: f.name, approved: approved || 0, pending: pending || 0 })
   }
 
   const { count: openMaintenance } = await supabase.from('maintenance_reports').select('id', { count: 'exact', head: true }).neq('status', 'resolved')

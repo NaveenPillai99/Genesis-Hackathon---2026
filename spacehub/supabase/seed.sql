@@ -134,11 +134,11 @@ insert into timetable_slots (room_id, day, slot_id, start_time, end_time, code, 
   ('room-ab2-305', 'Friday', 'slot8', '14:05', '14:55', '22CSC541', 'Soft Computing', 'Dr Gnanapriyadarshini'),
   ('room-ab2-305', 'Friday', 'slot9', '14:55', '15:45', '22CSC530', 'Social Network Analysis', 'Dr Megeshwari V');
 
-insert into facilities (id, name, type, location, description, contact, induction_required, allocation_model, image) values
-  ('fac-hpc', 'HPC Cluster', 'compute', 'Centre for Computational Engineering, AB4', 'Shared GPU/CPU cluster for large training jobs, simulations and research compute.', 'hpc-support@cb.amrita.edu', true, 'compute_time', '🖥️'),
-  ('fac-3dprint', '3D Printing Lab', 'equipment', 'Innovation Lab, AB1 Ground Floor', 'FDM and resin 3D printers for prototyping. Bring your own filament or buy on-site.', 'innovationlab@cb.amrita.edu', true, 'time_slot', '🖨️'),
-  ('fac-vr', 'VR / AR Lab', 'equipment', 'Innovation Lab, AB1 Ground Floor', 'Headsets and dev kits for immersive-computing projects and demos.', 'innovationlab@cb.amrita.edu', true, 'time_slot', '🥽'),
-  ('fac-electronics', 'Electronics Prototyping Lab', 'equipment', 'AB2 Basement', 'Soldering stations, oscilloscopes, Arduino/Raspberry Pi kits for hardware projects.', 'ece-lab@cb.amrita.edu', true, 'time_slot', '🔧');
+insert into facilities (id, name, type, location, description, contact, allocation_model, image) values
+  ('fac-hpc', 'HPC Cluster', 'compute', 'Centre for Computational Engineering, AB4', 'Shared GPU/CPU cluster for large training jobs, simulations and research compute.', 'hpc-support@cb.amrita.edu', 'compute_time', '🖥️'),
+  ('fac-3dprint', '3D Printing Lab', 'equipment', 'Innovation Lab, AB1 Ground Floor', 'FDM and resin 3D printers for prototyping. Bring your own filament or buy on-site.', 'innovationlab@cb.amrita.edu', 'time_slot', '🖨️'),
+  ('fac-vr', 'VR / AR Lab', 'equipment', 'Innovation Lab, AB1 Ground Floor', 'Headsets and dev kits for immersive-computing projects and demos.', 'innovationlab@cb.amrita.edu', 'time_slot', '🥽'),
+  ('fac-electronics', 'Electronics Prototyping Lab', 'equipment', 'AB2 Basement', 'Soldering stations, oscilloscopes, Arduino/Raspberry Pi kits for hardware projects.', 'ece-lab@cb.amrita.edu', 'time_slot', '🔧');
 
 -- Demo accounts for the pilot's role-select screen (see src/pages/Login).
 -- In production these rows are created by whatever syncs Amrita's login

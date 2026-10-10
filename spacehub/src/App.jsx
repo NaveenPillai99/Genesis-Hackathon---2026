@@ -12,7 +12,6 @@ import EventFeed from './pages/Events/EventFeed'
 import RequestVenue from './pages/Events/RequestVenue'
 import AdminApprovals from './pages/Events/AdminApprovals'
 import FacilityCatalogue from './pages/Facilities/FacilityCatalogue'
-import HPCAllocation from './pages/Facilities/HPCAllocation'
 import LostFoundBoard from './pages/LostFound/LostFoundBoard'
 import AdminDashboard from './pages/Admin/AdminDashboard'
 import { CAN_APPROVE_EVENT, ROLES } from './lib/constants'
@@ -61,7 +60,6 @@ function AppRoutes() {
           }
         />
         <Route path="/facilities" element={<FacilityCatalogue />} />
-        <Route path="/facilities/hpc" element={<HPCAllocation />} />
         <Route path="/lost-found" element={<LostFoundBoard />} />
         <Route
           path="/admin"

@@ -46,8 +46,8 @@ export default function AdminDashboard() {
           <UtilizationChart data={stats.roomUtilization} dataKey="utilizationPct" categoryKey="room" suffix="%" />
         </section>
         <section className="card p-5">
-          <h2 className="mb-3 text-sm font-bold text-slate-800">Facility bookings</h2>
-          <UtilizationChart data={stats.facilityUsage} dataKey="bookings" categoryKey="facility" suffix=" bookings" />
+          <h2 className="mb-3 text-sm font-bold text-slate-800">Facility requests approved</h2>
+          <UtilizationChart data={stats.facilityUsage} dataKey="approved" categoryKey="facility" suffix=" approved" />
         </section>
       </div>
 

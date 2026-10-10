@@ -69,9 +69,13 @@ create table room_bookings (
   checked_in_at  timestamptz,
   released_at    timestamptz,
   admin_override_reason text,
-  -- Generated range used purely for the exclusion constraint below.
-  period tstzrange generated always as (
-    tstzrange((booking_date + start_time)::timestamptz, (booking_date + end_time)::timestamptz)
+  -- Plain (timezone-naive) range, used purely for the exclusion constraint
+  -- below. A GENERATED column's expression must be immutable, and casting
+  -- timestamp -> timestamptz depends on the session's TimeZone setting, so
+  -- it isn't — tsrange avoids that cast entirely. Single-campus wall-clock
+  -- time doesn't need timezone awareness anyway.
+  period tsrange generated always as (
+    tsrange(booking_date + start_time, booking_date + end_time)
   ) stored,
   -- THE double-booking guard: two active bookings for the same room can never
   -- have overlapping periods. This holds even under concurrent requests —
@@ -117,8 +121,8 @@ create table events (
   decided_by      uuid references profiles(id),
   decided_at      timestamptz,
   created_at      timestamptz not null default now(),
-  period tstzrange generated always as (
-    tstzrange((event_date + start_time)::timestamptz, (event_date + end_time)::timestamptz)
+  period tsrange generated always as (
+    tsrange(event_date + start_time, event_date + end_time)
   ) stored,
   -- Only APPROVED events are mutually exclusive — pending requests are
   -- allowed to overlap on purpose, so the admin can see them side by side.
@@ -135,53 +139,61 @@ create table facilities (
   location           text,
   description        text,
   contact            text,
-  induction_required boolean not null default true,
   allocation_model   text not null default 'time_slot' check (allocation_model in ('time_slot','compute_time')),
   image              text,
   under_maintenance  boolean not null default false
 );
 
-create table inductions (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references profiles(id),
-  facility_id   text not null references facilities(id) on delete cascade,
-  completed_at  timestamptz not null default now(),
-  by_user_id    uuid references profiles(id),
-  unique (user_id, facility_id)
-);
-
-create table facility_bookings (
-  id            uuid primary key default gen_random_uuid(),
-  facility_id   text not null references facilities(id) on delete cascade,
-  user_id       uuid not null references profiles(id),
-  booking_date  date not null,
-  start_time    time not null,
-  end_time      time not null,
-  purpose       text,
-  status        text not null default 'booked' check (status in ('booked','completed','cancelled')),
-  created_at    timestamptz not null default now(),
-  period tstzrange generated always as (
-    tstzrange((booking_date + start_time)::timestamptz, (booking_date + end_time)::timestamptz)
+-- No induction system: access to a 'time_slot' facility (3D printer, VR/AR
+-- lab, etc.) is granted per request instead.
+--   Submitted -> [Faculty Approval Pending ->] Facility Admin Review ->
+--   Approved / Rejected / Alternative Suggested
+-- Students/class reps need their faculty mentor's sign-off first (mentor_id
+-- required, status starts at 'pending_mentor'); faculty/admin requesters
+-- skip straight to 'pending_facility' (mentor_id null — enforced by the app,
+-- see NEEDS_FACILITY_MENTOR in src/lib/constants.js). The facility
+-- administrator can approve, reject, or propose a different slot (stored in
+-- the alt_* columns); the requester then accepts (-> approved, copying
+-- alt_* into the canonical date/start/end) or declines (-> declined) it.
+-- Only an APPROVED request is mutually exclusive with other approved ones
+-- on the same facility/time — pending/suggested ones may overlap, same
+-- reasoning as events above.
+create table facility_requests (
+  id                   uuid primary key default gen_random_uuid(),
+  facility_id          text not null references facilities(id) on delete cascade,
+  requested_by         uuid not null references profiles(id),
+  mentor_id            uuid references profiles(id),
+  request_date         date not null,
+  start_time           time not null,
+  end_time             time not null,
+  duration_minutes     int,
+  node_hours_requested numeric,  -- only set for 'compute_time' facilities (HPC) — see facilities.allocation_model
+  purpose              text,
+  status               text not null default 'pending_mentor' check (status in ('pending_mentor','pending_facility','alternative_suggested','approved','declined')),
+  mentor_decided_by    uuid references profiles(id),
+  mentor_decided_at    timestamptz,
+  mentor_reason        text,
+  facility_decided_by  uuid references profiles(id),
+  facility_decided_at  timestamptz,
+  facility_reason      text,
+  alt_date             date,
+  alt_start_time       time,
+  alt_end_time         time,
+  alt_note             text,
+  created_at           timestamptz not null default now(),
+  period tsrange generated always as (
+    tsrange(request_date + start_time, request_date + end_time)
   ) stored,
-  exclude using gist (facility_id with =, period with &&) where (status = 'booked')
+  exclude using gist (facility_id with =, period with &&) where (status = 'approved')
 );
-create index on facility_bookings (facility_id, booking_date);
+create index on facility_requests (facility_id, request_date);
+create index on facility_requests (mentor_id, status);
+create index on facility_requests (requested_by);
 
--- HPC is allocated as compute time (node-hours), not physical slots. Small
--- requests self-serve; large ones need the student's faculty supervisor.
-create table hpc_allocations (
-  id                    uuid primary key default gen_random_uuid(),
-  student_id            uuid not null references profiles(id),
-  faculty_approver_id   uuid references profiles(id),
-  node_hours_requested  numeric not null check (node_hours_requested > 0),
-  purpose               text,
-  status                text not null default 'pending' check (status in ('pending','approved','declined')),
-  auto_approved         boolean not null default false,
-  created_at            timestamptz not null default now(),
-  decided_at            timestamptz,
-  decided_by            uuid references profiles(id),
-  decision_reason       text
-);
+-- HPC is allocated as compute time (node-hours, see node_hours_requested
+-- above) rather than physical equipment, but otherwise goes through this
+-- same facility_requests table and the same mentor -> facility-admin chain
+-- as every other facility — no separate HPC-only table or approval path.
 
 -- ============================================================ lost&found --
 -- Reported by academic block (not an exact room — the finder rarely knows
@@ -244,9 +256,7 @@ alter table room_bookings enable row level security;
 alter table blocked_dates enable row level security;
 alter table events enable row level security;
 alter table facilities enable row level security;
-alter table inductions enable row level security;
-alter table facility_bookings enable row level security;
-alter table hpc_allocations enable row level security;
+alter table facility_requests enable row level security;
 alter table lost_items enable row level security;
 alter table maintenance_reports enable row level security;
 
@@ -257,9 +267,7 @@ create policy "read all - room_bookings" on room_bookings for select using (true
 create policy "read all - blocked_dates" on blocked_dates for select using (true);
 create policy "read all - events" on events for select using (true);
 create policy "read all - facilities" on facilities for select using (true);
-create policy "read all - inductions" on inductions for select using (true);
-create policy "read all - facility_bookings" on facility_bookings for select using (true);
-create policy "read all - hpc_allocations" on hpc_allocations for select using (true);
+create policy "read all - facility_requests" on facility_requests for select using (true);
 create policy "read all - lost_items" on lost_items for select using (true);
 create policy "read all - maintenance_reports" on maintenance_reports for select using (true);
 
@@ -268,13 +276,11 @@ create policy "signed-in write - blocked_dates" on blocked_dates for all using (
 create policy "signed-in write - events" on events for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - timetable" on timetable_slots for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - facilities" on facilities for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "signed-in write - inductions" on inductions for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "signed-in write - facility_bookings" on facility_bookings for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "signed-in write - hpc_allocations" on hpc_allocations for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "signed-in write - facility_requests" on facility_requests for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - lost_items" on lost_items for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - maintenance_reports" on maintenance_reports for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Enable Realtime (Database -> Replication, or the snippet below) on the
 -- tables the UI live-updates so a booking made on one device shows up on
 -- another without a page refresh:
--- alter publication supabase_realtime add table room_bookings, events, facility_bookings, lost_items, maintenance_reports, blocked_dates, timetable_slots;
+-- alter publication supabase_realtime add table room_bookings, events, facility_requests, lost_items, maintenance_reports, blocked_dates, timetable_slots;

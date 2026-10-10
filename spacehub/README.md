@@ -67,7 +67,7 @@ see the comment on the `profiles` table in `supabase/schema.sql` and on
 |---|---|
 | **Classrooms** (`src/pages/Classrooms`) | Live availability board per date/room/slot. Timetabled classes (imported, admin-editable via `timetable_slots`) are always blocked. Class reps/faculty book instantly, first-come-first-served. Weekly booking-hour cap per role. QR check-in (simulated scan) with 15-minute auto-release. Admin can block a room for a date or cancel any booking. |
 | **Event venues** (`src/pages/Events`) | Faculty/admin submit a request = tentative hold. Admin approvals screen groups competing requests by venue+date, shows a **suggested priority score** (event level, academic/non-academic, audience fit, notice given, external guests — `src/lib/priorityScore.js`), lets the admin override with a required reason, and suggests free alternative venues on decline. The event admin can also **publish an event directly** (no scoring/approval queue — they're the one who'd approve it anyway). Every approved event — requested or direct — shows on a public, scrollable "Happening on campus" feed visible to every role. |
-| **Facilities** (`src/pages/Facilities`) | Discover-page catalogue (what/where/contact/induction status). Time-slot booking for equipment (3D printers, VR/AR, electronics), gated on induction. Facility in-charge/admin run inductions in-app. HPC modeled separately as **compute time** (node-hours): small requests auto-approve, large ones route to the student's faculty supervisor. |
+| **Facilities** (`src/pages/Facilities`) | Discover-page catalogue (what/where/contact). No induction gate — access to every facility, **HPC included**, runs through one unified pipeline: **Submitted → [Faculty Approval Pending →] Facility Admin Review → Approved / Rejected / Alternative Suggested**. Students/class reps pick a faculty mentor who approves first; faculty/admin requesters skip that step and go straight to the facility administrator. The admin can approve, reject, or **propose a different date/time**, which the requester then accepts (moves the request to that slot) or declines. HPC requests carry an extra **node-hours needed** field (`facility_requests.node_hours_requested`) but go through the exact same approval chain — no separate auto-approve threshold or HPC-only page. |
 | **Lost & Found** (`src/pages/LostFound`) | Report an item by **academic block** (not an exact room — the finder rarely knows the room code; room/floor/landmark detail goes in the free-text description instead), with an optional **photo** (resized client-side to a data URL). Notifies everyone who had a timetabled class or an active booking in that block **that day** — faculty teaching there plus anyone who booked a room there. |
 | **Admin dashboard** (`src/pages/Admin`) | Classroom utilization and facility-usage charts (Recharts), event-approval funnel, blocked-dates and maintenance-report management, a live-occupancy "emergency headcount" widget. |
 | **Maintenance reporting** | "Report an issue" is available from both a classroom's row and a facility's card — a serious report blocks further bookings on that room/facility until resolved. |
@@ -97,8 +97,8 @@ headcount → PS 8, open study spaces → PS 7, maintenance reporting → PS 9).
   scanner wired up yet — the check-in modal has a "simulate scan" button
   instead. Swapping in a camera scanner (e.g. `html5-qrcode`) that reads the
   same payload is a self-contained follow-up.
-- **Lost & found / induction notifications are in-app only** (no push/SMS/email)
-  — the UI shows who *would* be notified.
+- **Lost & found notifications are in-app only** (no push/SMS/email) — the UI
+  shows who *would* be notified.
 - **Lost item photos are stored as a compressed data URL** directly in the
   `lost_items.photo_url` text column (`src/lib/image.js` resizes to ~640px
   before encoding), not in Supabase Storage — simplest thing that works for a

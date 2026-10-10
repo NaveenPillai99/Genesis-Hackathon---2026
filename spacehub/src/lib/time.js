@@ -50,6 +50,14 @@ export function overlaps(aStart, aEnd, bStart, bEnd) {
   return toMinutes(aStart) < toMinutes(bEnd) && toMinutes(bStart) < toMinutes(aEnd)
 }
 
+/** 'HH:MM' that is `hours` (fractional, e.g. 1.5) after `start`. Clamps to 23:59 — callers deal with same-day scheduling only. */
+export function addHoursToTime(start, hours) {
+  const total = Math.min(23 * 60 + 59, toMinutes(start) + Math.round(hours * 60))
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 export function formatTimeRange(start, end) {
   return `${formatTime(start)} – ${formatTime(end)}`
 }

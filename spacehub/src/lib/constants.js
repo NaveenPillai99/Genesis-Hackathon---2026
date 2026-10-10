@@ -19,10 +19,10 @@ export const ROLE_LABELS = {
 }
 
 export const ROLE_DESCRIPTIONS = {
-  [ROLES.STUDENT]: 'View classroom availability, browse events, book facilities after induction.',
+  [ROLES.STUDENT]: 'View classroom availability, browse events, request facility access.',
   [ROLES.CLASS_REP]: 'Book free classroom slots for your section, first come first served.',
-  [ROLES.FACULTY]: 'Book classrooms, submit event venue requests, approve student HPC jobs.',
-  [ROLES.FACILITY_INCHARGE]: 'Run inductions, manage equipment, mark maintenance on facilities.',
+  [ROLES.FACULTY]: 'Book classrooms, submit event venue requests, approve student facility requests.',
+  [ROLES.FACILITY_INCHARGE]: 'Give final approval on facility access requests, manage equipment, mark maintenance.',
   [ROLES.ADMIN]: 'Approve event venues, override classroom bookings, see the full dashboard.',
 }
 
@@ -32,12 +32,21 @@ export const CAN_BOOK_CLASSROOM = new Set([ROLES.CLASS_REP, ROLES.FACULTY, ROLES
 export const CAN_REQUEST_EVENT = new Set([ROLES.FACULTY, ROLES.ADMIN])
 // Can this role decide on event venue requests?
 export const CAN_APPROVE_EVENT = new Set([ROLES.ADMIN])
-// Can this role book facilities (after induction)?
-export const CAN_BOOK_FACILITY = new Set([ROLES.STUDENT, ROLES.CLASS_REP, ROLES.FACULTY, ROLES.ADMIN])
-// Can this role run inductions / manage equipment?
+// Can this role request facility access?
+export const CAN_REQUEST_FACILITY = new Set([ROLES.STUDENT, ROLES.CLASS_REP, ROLES.FACULTY, ROLES.ADMIN])
+// Whose requests need faculty-mentor approval first? Everyone else (faculty,
+// admin) skips straight to facility admin review — they don't need their
+// own sign-off.
+export const NEEDS_FACILITY_MENTOR = new Set([ROLES.STUDENT, ROLES.CLASS_REP])
+// Who can be picked as the faculty mentor who gives first approval?
+export const CAN_BE_FACILITY_MENTOR = new Set([ROLES.FACULTY])
+// Can this role see/decide the mentor-approval queue (narrowed to their own
+// assigned requests in the UI — admin sees all, as an oversight override)?
+export const CAN_APPROVE_FACILITY_MENTOR_STAGE = new Set([ROLES.FACULTY, ROLES.ADMIN])
+// Can this role act as facility administrator — final approve/reject/
+// suggest-alternative decision, plus manage equipment? Applies uniformly to
+// every facility, HPC included — there's no separate HPC approval path.
 export const CAN_MANAGE_FACILITY = new Set([ROLES.FACILITY_INCHARGE, ROLES.ADMIN])
-// Can this role approve large HPC jobs from their students?
-export const CAN_APPROVE_HPC = new Set([ROLES.FACULTY, ROLES.ADMIN])
 
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
@@ -77,16 +86,26 @@ export const EVENT_STATUS = {
   CANCELLED: 'cancelled',
 }
 
-export const FACILITY_BOOKING_STATUS = {
-  BOOKED: 'booked',
-  COMPLETED: 'completed',
-  CANCELLED: 'cancelled',
-}
-
-export const HPC_STATUS = {
-  PENDING: 'pending',
+// Submitted -> [Faculty Approval Pending ->] Facility Admin Review ->
+// Approved / Rejected / Alternative Suggested. Student/class-rep requests
+// start at pending_mentor; faculty/admin requests start at pending_facility
+// directly (see NEEDS_FACILITY_MENTOR). An alternative-time suggestion is
+// itself a holding state — the requester accepts (-> approved) or declines
+// (-> declined) it.
+export const FACILITY_REQUEST_STATUS = {
+  PENDING_MENTOR: 'pending_mentor',
+  PENDING_FACILITY: 'pending_facility',
+  ALTERNATIVE_SUGGESTED: 'alternative_suggested',
   APPROVED: 'approved',
   DECLINED: 'declined',
+}
+
+export const FACILITY_REQUEST_STATUS_LABELS = {
+  pending_mentor: 'Faculty approval pending',
+  pending_facility: 'Facility admin review',
+  alternative_suggested: 'Alternative time suggested',
+  approved: 'Approved',
+  declined: 'Rejected',
 }
 
 export const MAINTENANCE_STATUS = {
