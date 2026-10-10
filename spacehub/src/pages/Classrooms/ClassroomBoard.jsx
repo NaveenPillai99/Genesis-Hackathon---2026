@@ -31,10 +31,19 @@ export default function ClassroomBoard() {
   const [blockTarget, setBlockTarget] = useState(null)
   const [issueTarget, setIssueTarget] = useState(null)
 
-  const { data: rooms } = useLiveData(() => listRooms({ type: ROOM_TYPES.CLASSROOM }), [])
+  const [buildingFilter, setBuildingFilter] = useState('')
+  const [minCapacityFilter, setMinCapacityFilter] = useState(0)
+
+  const { data: allRooms } = useLiveData(() => listRooms({ type: ROOM_TYPES.CLASSROOM }), [])
+  const rooms = (allRooms ?? []).filter((r) => {
+    if (buildingFilter && r.building !== buildingFilter) return false
+    if (minCapacityFilter && r.capacity < minCapacityFilter) return false
+    return true
+  })
+
   const { data: board, loading } = useLiveData(
     () => getAvailability({ date, roomIds: (rooms ?? []).map((r) => r.id) }),
-    [date, rooms?.length]
+    [date, rooms?.length, buildingFilter, minCapacityFilter]
   )
 
   const canBook = CAN_BOOK_CLASSROOM.has(user.role)
@@ -59,6 +68,38 @@ export default function ClassroomBoard() {
             ? 'Free, first-come-first-served. Timetabled classes are always blocked.'
             : 'View only — ask your class representative or faculty to book a slot.'}
         </p>
+      </div>
+
+      {/* Filter Row */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-bold text-slate-700">Filters:</span>
+          <select
+            value={buildingFilter}
+            onChange={(e) => setBuildingFilter(e.target.value)}
+            className="input !py-1 !px-2 text-xs"
+          >
+            <option value="">All Academic Blocks</option>
+            <option value="AB1">Academic Block 1 (AB1)</option>
+            <option value="AB2">Academic Block 2 (AB2)</option>
+            <option value="AB3">Academic Block 3 (AB3)</option>
+            <option value="AB4">Academic Block 4 (AB4)</option>
+          </select>
+
+          <select
+            value={minCapacityFilter}
+            onChange={(e) => setMinCapacityFilter(Number(e.target.value))}
+            className="input !py-1 !px-2 text-xs"
+          >
+            <option value={0}>Any Capacity</option>
+            <option value={50}>50+ Seats</option>
+            <option value={60}>60+ Seats</option>
+            <option value={70}>70+ Seats</option>
+          </select>
+        </div>
+        <span className="text-xs text-slate-400 font-medium">
+          Showing {rooms.length} classroom(s)
+        </span>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">

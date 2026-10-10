@@ -57,6 +57,22 @@ export const {
   listMaintenanceReports,
   getUtilizationStats,
   HPC_THRESHOLD,
+  // Academic Scheduling
+  listChangeRequests,
+  proposeChangeRequest,
+  reviewChangeRequest,
+  // Enhanced Lost & Found
+  reportSmartLostItem,
+  submitClaim,
+  reviewClaim,
+  recordHandover,
+  // Notifications & Audit & Governance
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  listAuditLogs,
+  getEGovernanceSpec,
+  simulateEGovernanceSync,
 } = impl
 
 export function initRealtime() {

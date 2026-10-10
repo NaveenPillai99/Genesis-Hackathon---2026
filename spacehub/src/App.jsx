@@ -8,6 +8,7 @@ import { Spinner } from './components/common/Feedback'
 import RoleSelect from './pages/Login/RoleSelect'
 import Dashboard from './pages/Home/Dashboard'
 import ClassroomBoard from './pages/Classrooms/ClassroomBoard'
+import AcademicScheduling from './pages/AcademicScheduling/AcademicScheduling'
 import EventFeed from './pages/Events/EventFeed'
 import RequestVenue from './pages/Events/RequestVenue'
 import AdminApprovals from './pages/Events/AdminApprovals'
@@ -15,7 +16,9 @@ import FacilityCatalogue from './pages/Facilities/FacilityCatalogue'
 import HPCAllocation from './pages/Facilities/HPCAllocation'
 import LostFoundBoard from './pages/LostFound/LostFoundBoard'
 import AdminDashboard from './pages/Admin/AdminDashboard'
-import { CAN_APPROVE_EVENT, ROLES } from './lib/constants'
+import GovernanceAudit from './pages/Admin/GovernanceAudit'
+import UserProfile from './pages/Profile/UserProfile'
+import { CAN_APPROVE_EVENT, CAN_VIEW_AUDIT_LOGS, ROLES } from './lib/constants'
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -50,6 +53,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/classrooms" element={<ClassroomBoard />} />
+        <Route path="/academic-scheduling" element={<AcademicScheduling />} />
         <Route path="/events" element={<EventFeed />} />
         <Route path="/events/new" element={<RequestVenue />} />
         <Route
@@ -66,11 +70,20 @@ function AppRoutes() {
         <Route
           path="/admin"
           element={
-            <RequireRole allow={(r) => r === ROLES.ADMIN}>
+            <RequireRole allow={(r) => r === ROLES.ADMIN || r === ROLES.RESOURCE_ADMIN || r === ROLES.SYS_ADMIN}>
               <AdminDashboard />
             </RequireRole>
           }
         />
+        <Route
+          path="/governance"
+          element={
+            <RequireRole allow={(r) => CAN_VIEW_AUDIT_LOGS.has(r)}>
+              <GovernanceAudit />
+            </RequireRole>
+          }
+        />
+        <Route path="/profile" element={<UserProfile />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

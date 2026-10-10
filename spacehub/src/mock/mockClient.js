@@ -68,6 +68,26 @@ function freshDb() {
     profiles: SEED_PROFILES,
     rooms: SEED_ROOMS,
     timetableSlots: buildSeedTimetableSlots(),
+    timetableChangeRequests: [
+      {
+        id: 'tt-req-001',
+        courseCode: '22CSC401',
+        courseName: 'Deep Learning',
+        classSection: 'Int. M.Sc Data Science, VII B',
+        requesterId: 'user-classrep-1',
+        requesterName: 'Devika Nair',
+        originalDay: 'Friday',
+        originalSlot: 'slot2',
+        originalRoomId: 'room-ab1-e104',
+        proposedDay: 'Thursday',
+        proposedSlot: 'slot4',
+        proposedRoomId: 'room-ab1-e104',
+        proposedDate: '2026-10-15',
+        reason: 'Students participating in Inter-University Hackathon on Friday morning. Requesting reschedule to Thursday Slot 4.',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      },
+    ],
     roomBookings: [],
     blockedDates: [],
     events: [],
@@ -75,7 +95,127 @@ function freshDb() {
     facilityBookings: [],
     inductions: [],
     hpcAllocations: [],
-    lostItems: [],
+    lostItems: [
+      {
+        id: 'lf-001',
+        reportType: 'found',
+        title: 'Casio Scientific Calculator FX-991CW',
+        category: 'electronics',
+        description: 'Black non-programmable calculator found on the 2nd row desk near the window.',
+        locationFound: 'AB1 E-104 (1st Floor)',
+        isClassroom: true,
+        roomId: 'room-ab1-e104',
+        foundDate: '2026-10-09',
+        foundTime: '09:40',
+        finderName: 'Aarav Menon',
+        finderId: 'user-student-1',
+        currentCustody: 'class_advisor',
+        storageLocation: 'Class Advisor Office (Mathematics Dept, AB1 Room 214)',
+        assignedHandlerName: 'Dr Devika',
+        assignedHandlerId: 'user-classadvisor-1',
+        routingReason: 'Classroom Timetable Match: Deep Learning (Int. M.Sc Data Science VII B). Auto-routed to Class Advisor Dr Devika.',
+        status: 'in_custody',
+        claims: [],
+        custodyLogs: [
+          {
+            id: 'log-1',
+            action: 'reported',
+            actorName: 'Aarav Menon',
+            fromCustodian: 'Finder',
+            toCustodian: 'Dr Devika',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        reportedAt: new Date().toISOString(),
+      },
+      {
+        id: 'lf-002',
+        reportType: 'found',
+        title: 'Navy Blue Campus Backpack (Wildcraft)',
+        category: 'bags',
+        description: 'Wildcraft navy blue backpack with a water bottle and notebooks inside.',
+        locationFound: 'AB2 Central Lawn benches',
+        isClassroom: false,
+        roomId: null,
+        foundDate: '2026-10-10',
+        foundTime: '13:20',
+        finderName: 'Aarav Menon',
+        finderId: 'user-student-1',
+        currentCustody: 'student_welfare',
+        storageLocation: 'Student Welfare Lost Property Locker #4',
+        assignedHandlerName: 'Ms Priya Balan',
+        assignedHandlerId: 'user-welfare-1',
+        routingReason: 'Outdoor Campus Area: Auto-routed to Student Welfare Office.',
+        status: 'claim_pending',
+        claims: [
+          {
+            id: 'claim-001',
+            claimantId: 'user-classrep-1',
+            claimantName: 'Devika Nair',
+            proofDescription: 'Contains Data Science notebooks with student name Devika N on page 1.',
+            contactPhone: '+91 98765 43210',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        custodyLogs: [
+          {
+            id: 'log-2',
+            action: 'claim_filed',
+            actorName: 'Ms Priya Balan',
+            fromCustodian: 'Student Welfare',
+            toCustodian: 'Student Welfare',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        reportedAt: new Date().toISOString(),
+      },
+    ],
+    notifications: [
+      {
+        id: 'notif-1',
+        recipientId: 'user-classrep-1',
+        title: 'Classroom Booking Confirmed',
+        message: 'Your reservation for AB1-E104 on Friday Slot 8 has been confirmed.',
+        category: 'booking',
+        link: '/classrooms',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'notif-2',
+        recipientId: 'user-classadvisor-1',
+        title: 'Action Required: Lost Item Auto-Routed',
+        message: 'A calculator found in AB1-E104 during your class slot was automatically routed to your custody.',
+        category: 'lost_found',
+        link: '/lost-found',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'notif-3',
+        recipientId: 'user-classadvisor-1',
+        title: 'Timetable Change Request Pending',
+        message: 'Class Rep Devika Nair requested to move Deep Learning from Friday Slot 2 to Thursday Slot 4.',
+        category: 'timetable',
+        link: '/academic-scheduling',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    auditLogs: [
+      {
+        id: 'aud-1',
+        actorId: 'user-sysadmin-1',
+        actorName: 'Prof. K. R. Ramakrishnan',
+        actorRole: 'sys_admin',
+        action: 'SYSTEM_BOOT',
+        entityType: 'SYSTEM',
+        entityId: 'ROOT',
+        details: 'CampusConnect Pilot Initialized',
+        timestamp: new Date().toISOString(),
+      },
+    ],
     maintenanceReports: [],
   }
 }
@@ -898,6 +1038,210 @@ export async function getUtilizationStats() {
   return { roomUtilization, eventCounts, facilityUsage, openMaintenance, unclaimedLostItems }
 }
 
-// ----------------------------------------------------------- misc exports
+// ------------------------------------------------ Academic Scheduling
+export async function listChangeRequests() {
+  return [...(db.timetableChangeRequests || [])].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
 
+export async function proposeChangeRequest(reqData) {
+  const newReq = {
+    id: newId('tt-req'),
+    ...reqData,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  }
+  return mutate((d) => {
+    if (!d.timetableChangeRequests) d.timetableChangeRequests = []
+    d.timetableChangeRequests.push(newReq)
+    if (!d.notifications) d.notifications = []
+    d.notifications.push({
+      id: newId('notif'),
+      recipientId: 'user-classadvisor-1',
+      title: 'Timetable Change Proposal',
+      message: `${reqData.requesterName} proposed moving ${reqData.courseName} to ${reqData.proposedDay} (${reqData.proposedSlot}).`,
+      category: 'timetable',
+      link: '/academic-scheduling',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    })
+    return newReq
+  })
+}
+
+export async function reviewChangeRequest(id, { decision, reviewNotes, approverName, approverId }) {
+  return mutate((d) => {
+    const req = (d.timetableChangeRequests || []).find((r) => r.id === id)
+    if (!req) throw new Error('Change request not found')
+    req.status = decision
+    req.approverName = approverName
+    req.approverId = approverId
+    req.reviewNotes = reviewNotes
+    req.updatedAt = new Date().toISOString()
+
+    if (decision === 'approved') {
+      const existingSlot = d.timetableSlots.find(
+        (s) => s.day === req.originalDay && s.slotId === req.originalSlot && s.code === req.courseCode
+      )
+      if (existingSlot) {
+        existingSlot.day = req.proposedDay
+        existingSlot.slotId = req.proposedSlot
+        existingSlot.roomId = req.proposedRoomId
+      }
+    }
+    return req
+  })
+}
+
+// ------------------------------------------------ Lost & Found Enhanced
+export async function reportSmartLostItem(itemData) {
+  let assignedHandlerName = 'Office of Student Welfare'
+  let assignedHandlerId = 'user-welfare-1'
+  let currentCustody = 'student_welfare'
+  let routingReason = 'Outdoor / Campus Common Area: Auto-routed to Student Welfare Office.'
+
+  if (itemData.isClassroom && itemData.roomId) {
+    const ttSlot = (db.timetableSlots || []).find(
+      (s) => s.roomId === itemData.roomId && s.slotId === itemData.slotId
+    )
+    if (ttSlot && ttSlot.faculty) {
+      assignedHandlerName = 'Dr Devika'
+      assignedHandlerId = 'user-classadvisor-1'
+      currentCustody = 'class_advisor'
+      routingReason = `Classroom Timetable Match (${ttSlot.courseName || 'Class'}). Automatically routed to Class Advisor Dr Devika.`
+    }
+  }
+
+  const item = {
+    id: newId('lf'),
+    ...itemData,
+    assignedHandlerName,
+    assignedHandlerId,
+    currentCustody,
+    routingReason,
+    status: 'reported',
+    claims: [],
+    custodyLogs: [
+      {
+        id: newId('log'),
+        action: 'reported',
+        actorName: itemData.finderName,
+        fromCustodian: 'Finder',
+        toCustodian: assignedHandlerName,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    reportedAt: new Date().toISOString(),
+  }
+
+  return mutate((d) => {
+    if (!d.lostItems) d.lostItems = []
+    d.lostItems.unshift(item)
+    return item
+  })
+}
+
+export async function submitClaim(itemId, claimData) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const newClaim = {
+      id: newId('claim'),
+      ...claimData,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    }
+    if (!item.claims) item.claims = []
+    item.claims.push(newClaim)
+    item.status = 'claim_pending'
+    return newClaim
+  })
+}
+
+export async function reviewClaim(itemId, claimId, { decision, handlerNotes }) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const claim = (item.claims || []).find((c) => c.id === claimId)
+    if (!claim) throw new Error('Claim not found')
+    claim.status = decision
+    claim.handlerNotes = handlerNotes
+    if (decision === 'rejected') item.status = 'in_custody'
+    return claim
+  })
+}
+
+export async function recordHandover(itemId, { newCustody, handoverNotes }) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const oldCustody = item.currentCustody
+    item.status = newCustody
+    item.currentCustody = newCustody
+    item.handoverNotes = handoverNotes
+    if (newCustody === 'returned') {
+      item.returnDate = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    }
+    if (!item.custodyLogs) item.custodyLogs = []
+    item.custodyLogs.push({
+      id: newId('log'),
+      action: newCustody,
+      actorName: 'Custodian',
+      fromCustodian: oldCustody,
+      toCustodian: newCustody,
+      notes: handoverNotes,
+      timestamp: new Date().toISOString(),
+    })
+    return item
+  })
+}
+
+// ------------------------------------------------ Notifications
+export async function listNotifications(userId) {
+  return (db.notifications || []).filter(
+    (n) => !userId || n.recipientId === userId || n.recipientId === 'all'
+  )
+}
+
+export async function markNotificationRead(id) {
+  return mutate((d) => {
+    const notif = (d.notifications || []).find((n) => n.id === id)
+    if (notif) notif.isRead = true
+    return notif
+  })
+}
+
+export async function markAllNotificationsRead(userId) {
+  return mutate((d) => {
+    ;(d.notifications || []).forEach((n) => {
+      if (!userId || n.recipientId === userId) n.isRead = true
+    })
+    return true
+  })
+}
+
+// ------------------------------------------------ Audit Logs
+export async function listAuditLogs() {
+  return [...(db.auditLogs || [])].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+}
+
+// ------------------------------------------------ E-Governance Spec
+export async function getEGovernanceSpec() {
+  return {
+    status: 'MOCK_INTEGRATION_MODE',
+    protocol: 'OpenID Connect (OIDC) / SAML 2.0',
+    issuer: 'https://auth.amrita.edu/realms/campus',
+    syncedRecords: 42,
+  }
+}
+
+export async function simulateEGovernanceSync() {
+  return {
+    status: 'SUCCESS',
+    synced_records: 42,
+    message: 'Simulated synchronization succeeded against synthetic university roster.',
+  }
+}
+
+// ----------------------------------------------------------- misc exports
 export { toMinutes }
+
