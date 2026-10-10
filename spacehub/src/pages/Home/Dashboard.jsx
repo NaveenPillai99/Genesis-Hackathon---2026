@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useLiveData } from '../../lib/useLiveData'
 import { getAvailability, listPublicEvents, listMyRoomBookings, listRooms } from '../../lib/dataClient'
-import { todayISO, nowHHMM, formatTimeRange, toMinutes } from '../../lib/time'
+import { todayISO, nowHHMM, formatTimeRange, toMinutes, upcomingDates } from '../../lib/time'
 import { ROLES, ROOM_TYPES } from '../../lib/constants'
 import Badge from '../../components/common/Badge'
 import EmptyState from '../../components/common/EmptyState'
@@ -13,10 +13,17 @@ export default function Dashboard() {
   const today = todayISO()
   const now = nowHHMM()
 
+  // The nearest teaching day (could be today, or the next weekday if today's
+  // a weekend) — timetable_slots only exist Mon-Fri, so checking literal
+  // todayISO() on a weekend would find zero classes and misreport every
+  // room as free all day, which isn't a useful "open study spaces" view.
+  const studyDate = upcomingDates(7)[0]?.iso ?? today
+  const studyDateIsToday = studyDate === today
+
   const { data: classrooms } = useLiveData(() => listRooms({ type: ROOM_TYPES.CLASSROOM }), [])
   const { data: board, loading: boardLoading } = useLiveData(
-    () => getAvailability({ date: today, roomIds: (classrooms ?? []).map((r) => r.id) }),
-    [today, classrooms?.length]
+    () => getAvailability({ date: studyDate, roomIds: (classrooms ?? []).map((r) => r.id) }),
+    [studyDate, classrooms?.length]
   )
   const { data: events, loading: eventsLoading } = useLiveData(() => listPublicEvents(), [])
   const { data: myBookings } = useLiveData(() => listMyRoomBookings(user.id), [user.id])
@@ -28,13 +35,18 @@ export default function Dashboard() {
     .filter((e) => e.date > today || (e.date === today && toMinutes(e.end) > toMinutes(now)))
     .sort((a, b) => (a.date + a.start < b.date + b.start ? -1 : 1))
 
-  const openNow = (board ?? [])
-    .map((entry) => {
-      const currentSlot = entry.slots.find((s) => toMinutes(s.start) <= toMinutes(now) && toMinutes(now) < toMinutes(s.end))
-      if (currentSlot?.status === 'free') return { room: entry.room, slot: currentSlot }
-      return null
-    })
-    .filter(Boolean)
+  // Every classroom's still-free slots on the nearest teaching day — not
+  // just the literal current minute (which is "free" for almost no one
+  // almost all day). Purely informational: no booking affordance here, just
+  // a live read of the timetable + bookings/check-ins/releases, same data
+  // the Classrooms board uses, so it reflects any change there instantly —
+  // including an admin's timetable edit or someone else's booking/cancel.
+  const openToday = (board ?? [])
+    .map((entry) => ({
+      room: entry.room,
+      freeSlots: entry.slots.filter((s) => s.status === 'free' && (!studyDateIsToday || toMinutes(s.end) > toMinutes(now))),
+    }))
+    .filter((entry) => entry.freeSlots.length > 0)
 
   const upcomingMine = (myBookings ?? []).filter((b) => b.status === 'booked' || b.status === 'checked_in').slice(0, 4)
 
@@ -88,21 +100,34 @@ export default function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-800">🪑 Open study spaces right now</h2>
+            <h2 className="text-sm font-bold text-slate-800">
+              🪑 Open study spaces {studyDateIsToday ? 'today' : 'next teaching day'}
+            </h2>
             <Link to="/classrooms" className="text-xs font-semibold text-brand-600 hover:underline">
-              Book one →
+              Full board →
             </Link>
           </div>
+          <p className="mb-3 text-xs text-slate-400">
+            {studyDateIsToday
+              ? 'Free classroom slots for the rest of today, straight from the timetable — just for finding a quiet spot, nothing to book here.'
+              : `No classes today — showing free slots for ${studyDate} instead, straight from the timetable.`}
+          </p>
           {boardLoading ? (
             <Spinner />
-          ) : openNow.length === 0 ? (
-            <EmptyState icon="🔒" title="No free rooms this instant" hint="Check the classroom board for later slots." />
+          ) : openToday.length === 0 ? (
+            <EmptyState icon="🔒" title="Nothing free for the rest of today" />
           ) : (
-            <ul className="flex flex-col gap-2">
-              {openNow.slice(0, 6).map(({ room, slot }) => (
-                <li key={room.id} className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm">
+            <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
+              {openToday.map(({ room, freeSlots }) => (
+                <li key={room.id} className="rounded-lg bg-emerald-50 px-3 py-2 text-sm">
                   <span className="font-semibold text-emerald-800">{room.name}</span>
-                  <span className="text-xs text-emerald-600">free until {slot.end}</span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {freeSlots.map((s) => (
+                      <span key={s.id} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                        {s.start}–{s.end}
+                      </span>
+                    ))}
+                  </div>
                 </li>
               ))}
             </ul>

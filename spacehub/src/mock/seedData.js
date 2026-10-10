@@ -1,4 +1,4 @@
-import { ROLES, ROOM_TYPES } from '../lib/constants'
+import { ROLES, ROOM_TYPES, WEEKDAYS, BOOKABLE_SLOTS } from '../lib/constants'
 
 // Static seed data: rooms, the imported timetable, facilities and a handful of
 // demo accounts. Dates for bookings/events are deliberately NOT baked in here —
@@ -31,7 +31,9 @@ export const SEED_ROOMS = [
 ]
 
 // { room, day, slot, code }
-export const SEED_TIMETABLE = [
+// Hand-curated from the real timetable image — left exactly as supplied,
+// not touched by the generated filler below.
+const CURATED_TIMETABLE = [
   // AB1 E103B — Int. M.Sc Data Science VII B
   { room: 'room-ab1-e103b', day: 'Monday', slot: 'slot4', code: '22CSC401' },
   { room: 'room-ab1-e103b', day: 'Monday', slot: 'slot5', code: '22CSC343' },
@@ -68,6 +70,48 @@ export const SEED_TIMETABLE = [
   { room: 'room-ab2-201', day: 'Tuesday', slot: 'slot2', code: '22CSC343' },
   { room: 'room-ab2-201', day: 'Thursday', slot: 'slot2', code: '22CSC343' },
 ]
+
+// Deterministic (not Math.random()) string -> [0,1) hash, so the generated
+// filler timetable below is stable across reloads/demos instead of
+// reshuffling every time the app loads, while still looking varied rather
+// than a regular checkerboard.
+function seededFraction(key) {
+  let h = 0
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 31 + key.charCodeAt(i)) >>> 0
+  }
+  return (h % 1000) / 1000
+}
+
+// Lecture-style courses only (excludes the 2-slot Open Lab block, which only
+// makes sense as the hand-curated pair it already is above).
+const FILLER_COURSE_CODES = Object.keys(COURSE_LEGEND).filter((c) => c !== '22CSC401L')
+
+// AB1 E103B already carries a real, fully-curated schedule (~45% occupied)
+// from the supplied timetable image — left untouched. The other classrooms
+// only had a handful of hand-picked entries, which made the availability
+// board look almost entirely empty. This fills the rest of the week for
+// those rooms to a comparable ~50% occupancy, same as a real campus.
+const FILLER_ROOMS = ['room-ab1-w102', 'room-ab1-e104', 'room-ab2-201', 'room-ab2-305']
+
+function buildFillerTimetable() {
+  const curatedCells = new Set(CURATED_TIMETABLE.map((e) => `${e.room}|${e.day}|${e.slot}`))
+  const entries = []
+  for (const room of FILLER_ROOMS) {
+    for (const day of WEEKDAYS) {
+      for (const slot of BOOKABLE_SLOTS) {
+        const key = `${room}|${day}|${slot.id}`
+        if (curatedCells.has(key)) continue // don't double-book an already hand-curated cell (e.g. the W102 lab)
+        if (seededFraction(key) >= 0.70) continue // ~50% occupied (this hash isn't perfectly uniform at this sample size — 0.70 was tuned empirically to land near 50%, not 0.5)
+        const code = FILLER_COURSE_CODES[Math.floor(seededFraction(`${key}#code`) * FILLER_COURSE_CODES.length)]
+        entries.push({ room, day, slot: slot.id, code })
+      }
+    }
+  }
+  return entries
+}
+
+export const SEED_TIMETABLE = [...CURATED_TIMETABLE, ...buildFillerTimetable()]
 
 export const SEED_FACILITIES = [
   {

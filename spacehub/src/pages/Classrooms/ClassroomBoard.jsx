@@ -127,14 +127,14 @@ export default function ClassroomBoard() {
                         {slot.status === 'free' && 'Free'}
                         {slot.status === 'timetable' && (
                           <>
-                            <span className="font-bold">{slot.timetable.code ?? slot.timetable.courseName}</span>
-                            {slot.timetable.code && <span className="truncate">{slot.timetable.courseName}</span>}
+                            <span className="w-full truncate font-bold">{slot.timetable.code ?? slot.timetable.courseName}</span>
+                            {slot.timetable.code && <span className="w-full truncate">{slot.timetable.courseName}</span>}
                           </>
                         )}
                         {(slot.status === 'booked' || slot.status === 'checked_in') && (
                           <>
                             <span className="font-bold">{slot.status === 'checked_in' ? 'Checked in' : 'Booked'}</span>
-                            <span className="truncate">{slot.booking.purpose}</span>
+                            <span className="w-full truncate">{slot.booking.purpose}</span>
                           </>
                         )}
                         {slot.status === 'blocked' && 'Blocked'}
