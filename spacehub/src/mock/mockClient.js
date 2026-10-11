@@ -990,6 +990,21 @@ export async function decideEvent(id, { decision, reason, byUserId, overridden }
   })
 }
 
+export async function recommendEvent(id, { recommendation, notes, byUserId, byUserName }) {
+  const event = db.events.find((e) => e.id === id)
+  if (!event) throw new Error('Event request not found.')
+
+  return mutate((d) => {
+    const e = d.events.find((x) => x.id === id)
+    e.departmentRecommendation = recommendation
+    e.departmentReviewerId = byUserId
+    e.departmentReviewerName = byUserName
+    e.departmentReviewNotes = notes
+    e.status = recommendation === 'RECOMMENDED' ? 'awaiting_director_approval' : recommendation.toLowerCase()
+    return e
+  })
+}
+
 export async function listMyEvents(userId) {
   return db.events.filter((e) => e.requestedBy === userId)
 }

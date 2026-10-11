@@ -117,6 +117,9 @@ export const SEED_FACILITIES = [
 ]
 
 export const SEED_PROFILES = [
+  { id: 'user-director-1', name: 'Dr Sasangan Ramanathan', role: ROLES.CAMPUS_DIRECTOR, department: 'Campus Administration', email: 'director@cb.amrita.edu', rollNumber: 'EMP.DIR.CAMPUS01' },
+  { id: 'user-dean-1', name: 'Dr Shankar K', role: ROLES.DEAN, department: 'Deanery of Engineering', email: 'dean@cb.amrita.edu', rollNumber: 'EMP.DEAN.ENG01' },
+  { id: 'user-hod-1', name: 'Dr Prema Nedungadi', role: ROLES.HOD, department: 'Computer Science & Engineering', email: 'hod.cse@cb.amrita.edu', rollNumber: 'EMP.HOD.CSE01' },
   { id: 'user-student-1', name: 'Aarav Menon', role: ROLES.STUDENT, department: 'CSE, V A', email: 'aarav@cb.students.amrita.edu', rollNumber: 'CB.EN.U4CSE21234' },
   { id: 'user-classrep-1', name: 'Devika Nair', role: ROLES.CLASS_REP, department: 'Int. M.Sc Data Science, VII B', email: 'devika.rep@cb.students.amrita.edu', rollNumber: 'CB.PS.I5DAS23157' },
   { id: 'user-classadvisor-1', name: 'Dr Devika', role: ROLES.CLASS_ADVISOR, department: 'Mathematics (Class Advisor, VII B)', email: 'devika.advisor@cb.amrita.edu', rollNumber: 'EMP.FAC.MATH402' },

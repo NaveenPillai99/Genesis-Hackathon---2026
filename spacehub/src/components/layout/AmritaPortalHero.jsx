@@ -26,6 +26,45 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
 
   // Role-specific action tiles tailored to the authentic 4-column Amrita portal layout
   function getActionTiles(role) {
+    if (role === ROLES.CAMPUS_DIRECTOR) {
+      return [
+        { label: 'PROFILE', icon: '🎓', path: '/profile' },
+        { label: 'DIRECTOR APPROVALS', icon: '🏛️', path: '/' },
+        { label: 'TIMETABLE MATRIX', icon: '📅', path: '/timetable' },
+        { label: 'CAMPUS VENUES', icon: '🎤', path: '/events' },
+        { label: 'ANALYTICS', icon: '📊', path: '/admin' },
+        { label: 'AUDIT TRAIL', icon: '🛡️', path: '/governance' },
+        { label: 'DOCUMENTS', icon: '📄', path: '#' },
+        { label: 'SERVICES', icon: '📝', path: '#' },
+      ]
+    }
+
+    if (role === ROLES.DEAN) {
+      return [
+        { label: 'PROFILE', icon: '🎓', path: '/profile' },
+        { label: 'DEAN DESK', icon: '📋', path: '/' },
+        { label: 'SCHOOL TIMETABLE', icon: '📅', path: '/timetable' },
+        { label: 'FACULTY SCHEDULES', icon: '🧑‍🏫', path: '/academic-scheduling' },
+        { label: 'CLASSROOMS', icon: '🏫', path: '/classrooms' },
+        { label: 'EVENT PROPOSALS', icon: '🎤', path: '/events' },
+        { label: 'DOCUMENTS', icon: '📄', path: '#' },
+        { label: 'SERVICES', icon: '📝', path: '#' },
+      ]
+    }
+
+    if (role === ROLES.HOD) {
+      return [
+        { label: 'PROFILE', icon: '🎓', path: '/profile' },
+        { label: 'HOD DESK', icon: '🏢', path: '/' },
+        { label: 'DEPT TIMETABLE', icon: '📅', path: '/timetable' },
+        { label: 'DEPT FACULTY', icon: '🧑‍🏫', path: '/academic-scheduling' },
+        { label: 'DEPT LABS', icon: '🔬', path: '/facilities' },
+        { label: 'REQUESTS', icon: '📝', path: '/events' },
+        { label: 'DOCUMENTS', icon: '📄', path: '#' },
+        { label: 'SERVICES', icon: '📝', path: '#' },
+      ]
+    }
+
     if (role === ROLES.HPC_FACULTY) {
       return [
         { label: 'PROFILE', icon: '🎓', path: '/profile' },

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import EventRequest, Room, User, TimetableSlot
 from app.schemas import (
-    EventCreate, EventReview, EventResponse,
+    EventCreate, EventReview, EventResponse, EventRecommendationCreate,
     PriorityCalculationRequest, PriorityCalculationResponse,
     AlternativeSelectionRequest, BookingPolicyResponse, BookingPolicyUpdateRequest,
 )
@@ -16,6 +16,8 @@ from app.auth import (
     record_audit,
     send_notification,
     get_user_permissions,
+    get_user_department_scopes,
+    get_user_class_scopes,
 )
 from app.config import (
     ROLE_FACULTY, ROLE_RESOURCE_ADMIN, ROLE_SYS_ADMIN,
@@ -138,17 +140,42 @@ def list_events(
     if venue_id:
         query = query.filter(EventRequest.venue_id == venue_id)
 
-    # Privacy Protection: If non-privileged (e.g. students), restrict to:
-    # 1) Approved public events, OR
-    # 2) Own requests
-    if not is_privileged:
+    # Hierarchical scoping:
+    if current_user.role in (ROLE_CAMPUS_DIRECTOR, ROLE_RESOURCE_ADMIN, ROLE_SYS_ADMIN):
+        # Campus Director, Central Resource Admin & SysAdmin: Institution-wide access
+        pass
+    elif current_user.role == ROLE_DEAN:
+        # Dean: authorized departments/schools within Dean's scope + own requests + approved public events
+        dept_scopes = get_user_department_scopes(current_user, db)
+        query = query.filter(
+            (EventRequest.status.in_(["approved", "APPROVED"])) |
+            (EventRequest.organizer_id == current_user.id) |
+            (EventRequest.department.in_(dept_scopes))
+        )
+    elif current_user.role == ROLE_HOD:
+        # HOD: full operational visibility within department + own requests + approved public events
+        dept_scopes = get_user_department_scopes(current_user, db)
+        query = query.filter(
+            (EventRequest.status.in_(["approved", "APPROVED"])) |
+            (EventRequest.organizer_id == current_user.id) |
+            (EventRequest.department.in_(dept_scopes))
+        )
+    elif current_user.role == ROLE_CLASS_ADVISOR:
+        # Class Advisor: own requests + approved public events
+        query = query.filter(
+            (EventRequest.status.in_(["approved", "APPROVED"])) |
+            (EventRequest.organizer_id == current_user.id)
+        )
+    else:
+        # Students, Class Reps, General Faculty:
         query = query.filter(
             (EventRequest.status.in_(["approved", "APPROVED"])) |
             (EventRequest.organizer_id == current_user.id)
         )
 
-    # Sort descending by combined priority score, with submission time (created_at asc) and ID as stable tie-breaker
+    # Sort descending by priority and combined priority score, with submission time (created_at asc) and ID as stable tie-breaker
     events = query.order_by(
+        EventRequest.priority.desc(),
         EventRequest.combined_priority_score.desc(),
         EventRequest.created_at.asc(),
         EventRequest.id.asc()
@@ -283,6 +310,25 @@ def get_competing_requests(
         "total_competing": len(overlapping),
         "competing_requests": competing_data,
     }
+
+
+@router.get("/{event_id}/competing")
+def get_event_competing_requests(
+    event_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    evt = db.query(EventRequest).filter(EventRequest.id == event_id).first()
+    if not evt:
+        raise HTTPException(status_code=404, detail="Event request not found")
+    return get_competing_requests(
+        venue_id=evt.venue_id,
+        event_date=evt.event_date,
+        start_slot=evt.start_slot,
+        end_slot=evt.end_slot,
+        current_user=current_user,
+        db=db,
+    )
 
 
 @router.post("/auto-decide-cluster")
@@ -577,6 +623,7 @@ def request_event_venue(
         offered_alternatives=json.dumps(offered_alternatives_data) if offered_alternatives_data else None,
         av_requirements=event_in.av_requirements,
         purpose=event_in.purpose or event_in.event_purpose,
+        department=current_user.department or "General Campus",
         status="pending"
     )
     db.add(evt)
@@ -713,11 +760,73 @@ def select_event_alternative(
     return serialize_event_for_response(evt, is_privileged=True, is_owner=True)
 
 
+@router.post("/{event_id}/recommend", response_model=EventResponse)
+def recommend_event_request(
+    event_id: str,
+    rec_in: EventRecommendationCreate,
+    current_user: User = Depends(require_permission("event.request.recommend")),
+    db: Session = Depends(get_db)
+):
+    """
+    Department Review & Recommendations Workflow:
+    Advisors, HODs, Deans, and Resource Admins review requests and record recommendations.
+    CRITICAL: Intermediate reviewers cannot finalize approval (status cannot be set to APPROVED here).
+    """
+    evt = db.query(EventRequest).filter(EventRequest.id == event_id).first()
+    if not evt:
+        raise HTTPException(status_code=404, detail="Event request not found")
+
+    rec_status = rec_in.recommendation.upper().strip()
+    if rec_status == "APPROVED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Final approval is reserved exclusively for the Campus Director. Intermediate reviewers may only recommend approval (RECOMMENDED), request modifications (CHANGES_REQUESTED), or mark under review."
+        )
+
+    if rec_status not in ["RECOMMENDED", "CHANGES_REQUESTED", "UNDER_REVIEW", "AWAITING_DIRECTOR_APPROVAL"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid recommendation status '{rec_in.recommendation}'. Must be RECOMMENDED, CHANGES_REQUESTED, or UNDER_REVIEW."
+        )
+
+    # Scoping check: If Dean or HOD, verify department scope
+    if current_user.role in (ROLE_HOD, ROLE_DEAN):
+        dept_scopes = get_user_department_scopes(current_user, db)
+        if "*" not in dept_scopes and evt.department and evt.department not in dept_scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Forbidden: You do not have administrative review authority over department '{evt.department}'."
+            )
+
+    evt.department_recommendation = rec_status
+    evt.department_reviewer_id = current_user.id
+    evt.department_reviewer_name = current_user.name
+    evt.department_review_notes = rec_in.notes
+    evt.status = "awaiting_director_approval" if rec_status == "RECOMMENDED" else rec_status.lower()
+
+    db.commit()
+    db.refresh(evt)
+
+    record_audit(
+        db, current_user.id, current_user.name, current_user.role,
+        f"EVENT_{rec_status}", "EVENT", evt.id,
+        f"Recommendation by {current_user.name} ({current_user.role}): {rec_status}. Notes: {rec_in.notes}"
+    )
+
+    send_notification(
+        db, evt.organizer_id, f"Event Request {rec_status.replace('_', ' ').title()}",
+        f"Your event request '{evt.name}' has received a recommendation: {rec_status} by {current_user.name}.",
+        category="event", link="/events"
+    )
+
+    return serialize_event_for_response(evt, is_privileged=True, is_owner=(evt.organizer_id == current_user.id))
+
+
 @router.post("/{event_id}/review", response_model=EventResponse)
 def review_event_request(
     event_id: str,
     review_in: EventReview,
-    current_user: User = Depends(require_permission("event.request.approve")),
+    current_user: User = Depends(require_permission("event.request.review")),
     db: Session = Depends(get_db)
 ):
     evt = db.query(EventRequest).filter(EventRequest.id == event_id).first()
@@ -732,11 +841,22 @@ def review_event_request(
         )
 
     target_status = normalize_status(review_in.decision)
-    if target_status not in ["APPROVED", "REJECTED", "ALTERNATIVES_OFFERED", "UNDER_REVIEW"]:
+    if target_status not in [
+        "APPROVED", "REJECTED", "ALTERNATIVES_OFFERED", "UNDER_REVIEW",
+        "RECOMMENDED", "CHANGES_REQUESTED", "AWAITING_DIRECTOR_APPROVAL"
+    ]:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid decision '{review_in.decision}'. Allowed decisions: approved, rejected, alternatives_offered, under_review"
+            detail=f"Invalid decision '{review_in.decision}'. Allowed decisions: approved, rejected, alternatives_offered, under_review, recommended, changes_requested"
         )
+
+    # CRITICAL RULE: Campus Director is the final approval authority for event requests and campus resource bookings!
+    if target_status == "APPROVED":
+        if current_user.role != ROLE_CAMPUS_DIRECTOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: The Campus Director is the final approval authority for event requests and campus resource bookings. Other roles may submit recommendations, but must not bypass the Campus Director's final approval."
+            )
 
     # Enforce State Machine Transitions (Section 8)
     is_valid_tx, err_msg = validate_state_transition(evt.status, target_status)
@@ -775,7 +895,7 @@ def review_event_request(
         ]
 
         if higher_priority_competitors:
-            justification = (review_in.override_justification or review_in.notes or "").strip()
+            justification = (review_in.override_justification or "").strip()
             if not justification or len(justification) < 5:
                 top_comp = higher_priority_competitors[0]
                 raise HTTPException(
@@ -786,6 +906,24 @@ def review_event_request(
                     )
                 )
             evt.override_justification = justification
+            evt.director_override_applied = True
+
+        evt.director_id = current_user.id
+        evt.director_name = current_user.name
+        evt.director_decision = "APPROVED"
+        evt.director_notes = review_in.notes
+
+    elif target_status == "REJECTED":
+        evt.director_id = current_user.id
+        evt.director_name = current_user.name
+        evt.director_decision = "REJECTED"
+        evt.rejection_reason = review_in.notes
+
+    elif target_status in ["RECOMMENDED", "CHANGES_REQUESTED", "UNDER_REVIEW"]:
+        evt.department_reviewer_id = current_user.id
+        evt.department_reviewer_name = current_user.name
+        evt.department_recommendation = target_status
+        evt.department_review_notes = review_in.notes
 
     evt.status = target_status.lower() if target_status in ["APPROVED", "REJECTED"] else target_status
     evt.admin_notes = review_in.notes

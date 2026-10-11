@@ -1,6 +1,9 @@
 import { useAuth } from '../../context/AuthContext'
 import { ROLES } from '../../lib/constants'
 
+import CampusDirectorDashboard from './dashboards/CampusDirectorDashboard'
+import DeanDashboard from './dashboards/DeanDashboard'
+import HODDashboard from './dashboards/HODDashboard'
 import HPCFacultyDashboard from './dashboards/HPCFacultyDashboard'
 import StudentDashboard from './dashboards/StudentDashboard'
 import ClassRepDashboard from './dashboards/ClassRepDashboard'
@@ -17,6 +20,15 @@ export default function Dashboard() {
   const role = user?.role || ROLES.STUDENT
 
   switch (role) {
+    case ROLES.CAMPUS_DIRECTOR:
+      return <CampusDirectorDashboard user={user} />
+
+    case ROLES.DEAN:
+      return <DeanDashboard user={user} />
+
+    case ROLES.HOD:
+      return <HODDashboard user={user} />
+
     case ROLES.HPC_FACULTY:
       return <HPCFacultyDashboard user={user} />
 

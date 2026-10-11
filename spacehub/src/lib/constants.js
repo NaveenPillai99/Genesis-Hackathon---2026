@@ -1,6 +1,9 @@
 // Central vocabulary for CampusConnect: roles, permissions, time slots, and statuses.
 
 export const ROLES = {
+  CAMPUS_DIRECTOR: 'campus_director',
+  DEAN: 'dean',
+  HOD: 'hod',
   STUDENT: 'student',
   CLASS_REP: 'class_rep',
   CLASS_ADVISOR: 'class_advisor',
@@ -17,6 +20,9 @@ export const ROLES = {
 }
 
 export const ROLE_LABELS = {
+  [ROLES.CAMPUS_DIRECTOR]: 'Campus Director',
+  [ROLES.DEAN]: 'Dean of School',
+  [ROLES.HOD]: 'Head of Department (HOD)',
   [ROLES.STUDENT]: 'Student',
   [ROLES.CLASS_REP]: 'Class Representative',
   [ROLES.CLASS_ADVISOR]: 'Class Advisor',
@@ -30,6 +36,9 @@ export const ROLE_LABELS = {
 }
 
 export const ROLE_BADGE_COLORS = {
+  [ROLES.CAMPUS_DIRECTOR]: 'bg-rose-50 text-rose-800 border-rose-300 ring-1 ring-rose-400/20',
+  [ROLES.DEAN]: 'bg-indigo-50 text-indigo-800 border-indigo-300 ring-1 ring-indigo-400/20',
+  [ROLES.HOD]: 'bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-400/20',
   [ROLES.STUDENT]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   [ROLES.CLASS_REP]: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   [ROLES.CLASS_ADVISOR]: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -39,18 +48,21 @@ export const ROLE_BADGE_COLORS = {
   [ROLES.LAB_ADMIN]: 'bg-orange-50 text-orange-700 border-orange-200',
   [ROLES.RESOURCE_ADMIN]: 'bg-purple-50 text-purple-700 border-purple-200',
   [ROLES.LOST_PROPERTY_HANDLER]: 'bg-teal-50 text-teal-700 border-teal-200',
-  [ROLES.SYS_ADMIN]: 'bg-rose-50 text-rose-700 border-rose-200',
+  [ROLES.SYS_ADMIN]: 'bg-slate-50 text-slate-700 border-slate-200',
 }
 
 export const ROLE_DESCRIPTIONS = {
-  [ROLES.STUDENT]: 'View classroom availability, browse approved events, report lost items, request eligible labs.',
-  [ROLES.CLASS_REP]: 'Book free classroom slots for your section, submit class prepone/postpone reschedule proposals.',
-  [ROLES.CLASS_ADVISOR]: 'Manage assigned classes, review & approve timetable reschedule proposals, handle classroom lost items.',
-  [ROLES.FACULTY]: 'Manage teaching schedule, submit event venues, review timetable changes, submit research compute.',
+  [ROLES.CAMPUS_DIRECTOR]: 'Institution-wide final approval authority for event requests and campus resource bookings. Full timetable visibility.',
+  [ROLES.DEAN]: 'Authorized school/deanery scope oversight, review department event requests, submit recommendations, view faculty timetables.',
+  [ROLES.HOD]: 'Full departmental scope: all department classes, batches, and faculty schedules. Review and recommend department bookings.',
+  [ROLES.STUDENT]: 'View registered class timetable, browse approved public events, report lost items, request eligible labs.',
+  [ROLES.CLASS_REP]: 'Book free classroom slots for registered section, submit class reschedule proposals, view teaching faculty schedules.',
+  [ROLES.CLASS_ADVISOR]: 'Manage assigned classes, review & approve timetable reschedule proposals, review event requests.',
+  [ROLES.FACULTY]: 'Manage teaching schedule, view complete timetable for taught classes, submit event venue requests.',
   [ROLES.HPC_FACULTY]: 'Administer dedicated HPC supercomputing cluster, node health, allocation requests and maintenance.',
   [ROLES.LAB_ASSISTANT]: 'Manage assigned equipment, toggle maintenance, process lab slots, update custody.',
   [ROLES.LAB_ADMIN]: 'Configure lab policies, oversee lab assistants, grant safety inductions, review utilization.',
-  [ROLES.RESOURCE_ADMIN]: 'Review event venue requests with priority score, override conflicts, view campus-wide analytics.',
+  [ROLES.RESOURCE_ADMIN]: 'Review and triage event venue requests with priority score, provide alternatives, view campus-wide analytics.',
   [ROLES.LOST_PROPERTY_HANDLER]: 'Receive campus lost-item reports, verify claims, record custody handovers and returns.',
   [ROLES.SYS_ADMIN]: 'Manage system configuration, security audit logs, E-Governance integration adapter.',
 }
@@ -69,11 +81,20 @@ export const CAN_APPROVE_TIMETABLE_CHANGE = new Set([
 ])
 
 export const CAN_REQUEST_EVENT = new Set([
-  ROLES.FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
+  ROLES.CAMPUS_DIRECTOR, ROLES.DEAN, ROLES.HOD, ROLES.FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
 ])
 
+// CRITICAL RULE: Campus Director is the final approval authority for event requests and bookings
 export const CAN_APPROVE_EVENT = new Set([
-  ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
+  ROLES.CAMPUS_DIRECTOR
+])
+
+export const CAN_RECOMMEND_EVENT = new Set([
+  ROLES.DEAN, ROLES.HOD, ROLES.CLASS_ADVISOR, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
+])
+
+export const CAN_REVIEW_EVENT = new Set([
+  ROLES.CAMPUS_DIRECTOR, ROLES.DEAN, ROLES.HOD, ROLES.CLASS_ADVISOR, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
 ])
 
 export const CAN_BOOK_FACILITY = new Set([
