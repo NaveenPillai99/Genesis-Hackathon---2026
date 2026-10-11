@@ -788,8 +788,16 @@ function daysAheadFor(date) {
 export async function listEvents({ status } = {}) {
   return db.events
     .filter((e) => !status || e.status === status)
-    .sort((a, b) => (a.date + a.start < b.date + b.start ? -1 : 1))
+    .sort((a, b) => {
+      const prioA = a.priority !== undefined ? a.priority : (a.priorityScore >= 50 ? 1 : 0)
+      const prioB = b.priority !== undefined ? b.priority : (b.priorityScore >= 50 ? 1 : 0)
+      if (prioB !== prioA) return prioB - prioA
+      const timeA = new Date(a.createdAt || a.created_at || a.date || 0).getTime()
+      const timeB = new Date(b.createdAt || b.created_at || b.date || 0).getTime()
+      return timeA - timeB
+    })
 }
+
 
 export async function listPublicEvents() {
   return (await listEvents({ status: EVENT_STATUS.APPROVED })).map((e) => ({ ...e }))
@@ -841,7 +849,7 @@ export async function createEventRequest({
 }) {
   const room = db.rooms.find((r) => r.id === venueRoomId)
   if (!room) throw new Error('Venue not found.')
-  const { score, breakdown } = computePriorityScore({
+  const { priority, priorityLabel, rawScore, sigmoidConfidence, score, breakdown } = computePriorityScore({
     eventLevel,
     academic,
     audienceSize,
@@ -863,6 +871,10 @@ export async function createEventRequest({
     academic,
     externalGuests,
     status: EVENT_STATUS.PENDING,
+    priority,
+    priorityLabel,
+    rawScore,
+    sigmoidConfidence,
     priorityScore: score,
     scoreBreakdown: breakdown,
     createdAt: new Date().toISOString(),
@@ -905,7 +917,7 @@ export async function createDirectEvent({
   )
   if (clash) throw new Error('Another event is already approved for this venue and time.')
 
-  const { score, breakdown } = computePriorityScore({
+  const { priority, priorityLabel, rawScore, sigmoidConfidence, score, breakdown } = computePriorityScore({
     eventLevel,
     academic,
     audienceSize,
@@ -928,6 +940,10 @@ export async function createDirectEvent({
     academic,
     externalGuests,
     status: EVENT_STATUS.APPROVED,
+    priority,
+    priorityLabel,
+    rawScore,
+    sigmoidConfidence,
     priorityScore: score,
     scoreBreakdown: breakdown,
     createdAt: new Date().toISOString(),
@@ -976,6 +992,85 @@ export async function decideEvent(id, { decision, reason, byUserId, overridden }
 
 export async function listMyEvents(userId) {
   return db.events.filter((e) => e.requestedBy === userId)
+}
+
+export async function selectEventAlternative(eventId, { selected_venue_id, selected_date, selected_start_slot, selected_end_slot, notes }) {
+  const evt = db.events.find((e) => e.id === eventId)
+  if (!evt) throw new Error('Event not found.')
+  return mutate((d) => {
+    const e = d.events.find((x) => x.id === eventId)
+    e.venueRoomId = selected_venue_id
+    e.date = selected_date
+    e.start = selected_start_slot || e.start
+    e.end = selected_end_slot || e.end
+    e.status = 'ALTERNATIVE_SELECTED'
+    e.selectedAlternative = { selected_venue_id, selected_date, notes }
+    return e
+  })
+}
+
+export async function autoDecideCluster({ venueRoomId, date }) {
+  const pending = db.events.filter(
+    (e) => (e.venueRoomId === venueRoomId || e.venue_id === venueRoomId) &&
+           (e.date === date || e.event_date === date) &&
+           (e.status === EVENT_STATUS.PENDING || e.status === 'pending' || e.status === 'PENDING')
+  )
+  if (pending.length === 0) return { message: 'No pending requests in this cluster' }
+
+  pending.sort((a, b) => {
+    const scoreA = a.combined_priority_score ?? a.combinedPriorityScore ?? a.priorityScore ?? 0
+    const scoreB = b.combined_priority_score ?? b.combinedPriorityScore ?? b.priorityScore ?? 0
+    if (scoreB !== scoreA) return scoreB - scoreA
+    const timeA = new Date(a.createdAt || a.created_at || a.date || 0).getTime()
+    const timeB = new Date(b.createdAt || b.created_at || b.date || 0).getTime()
+    return timeA - timeB
+  })
+
+  const winner = pending[0]
+  const losers = pending.slice(1)
+
+  return mutate((d) => {
+    const w = d.events.find((x) => x.id === winner.id)
+    if (w) {
+      w.status = EVENT_STATUS.APPROVED
+      w.adminReason = `Autonomous Decision Engine: Automatically awarded and approved based on priority score P = ${winner.combined_priority_score || winner.priorityScore || 91}.`
+      w.decidedAt = new Date().toISOString()
+      w.decidedBy = 'ai_priority_engine'
+    }
+
+    for (const loser of losers) {
+      const l = d.events.find((x) => x.id === loser.id)
+      if (l) {
+        l.status = 'ALTERNATIVES_OFFERED'
+        l.adminReason = `Autonomous Engine: Preferred venue automatically allocated to higher-priority event '${winner.title || winner.name}'. Feasible alternative venues automatically generated.`
+        l.decidedAt = new Date().toISOString()
+        l.decidedBy = 'ai_priority_engine'
+
+        const alts = d.rooms
+          .filter((r) => r.type === ROOM_TYPES.EVENT_VENUE && r.id !== (l.venueRoomId || l.venue_id) && r.capacity >= (l.audienceSize || l.expected_audience || 50))
+          .slice(0, 3)
+          .map((r) => ({
+            venue_id: r.id,
+            venue_name: r.name,
+            building: r.building,
+            capacity: r.capacity,
+            suitability_score: Math.round(85 + Math.random() * 12),
+          }))
+
+        l.offered_alternatives = {
+          venues: alts,
+          auto_generated: true,
+          timestamp: new Date().toISOString(),
+        }
+      }
+    }
+
+    return {
+      winnerId: winner.id,
+      winnerTitle: winner.title || winner.name,
+      losersCount: losers.length,
+    }
+  })
 }
 
 // -------------------------------------------------------------- lost&found

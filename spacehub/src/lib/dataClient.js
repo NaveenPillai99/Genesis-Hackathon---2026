@@ -44,6 +44,8 @@ export const {
   createEventRequest,
   createDirectEvent,
   decideEvent,
+  selectEventAlternative,
+  autoDecideCluster,
   listMyEvents,
   getRecentBookersOfRoom,
   getPeopleWithActivityInBlock,

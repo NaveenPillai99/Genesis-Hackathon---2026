@@ -45,6 +45,11 @@ class UserProfileDetailResponse(BaseModel):
     custody_items_count: int
     egovernance_verified: bool
     last_login: str
+    priority: int = 0
+    priority_label: str = "Normal Priority"
+    raw_score: Optional[float] = None
+    sigmoid_confidence: Optional[float] = None
+
 
 # Rooms & Availability
 class RoomResponse(BaseModel):
@@ -170,10 +175,39 @@ class EventCreate(BaseModel):
     has_external_guests: bool = False
     av_requirements: Optional[str] = None
     purpose: Optional[str] = None
+    event_purpose: Optional[str] = "Meeting / Discussion"
+    requires_projector: bool = False
+    requires_ac: bool = False
+    requires_audio: bool = False
+    room_type_preference: str = "event_venue"
 
 class EventReview(BaseModel):
-    decision: str  # 'approved', 'declined'
+    decision: str  # 'approved', 'rejected', 'declined', 'alternatives_offered'
     notes: Optional[str] = None
+    override_justification: Optional[str] = None
+
+class AlternativeSelectionRequest(BaseModel):
+    selection_type: str = "alternative_venue"  # 'alternative_venue' or 'alternative_time'
+    selected_venue_id: str
+    selected_date: str
+    selected_start_slot: str
+    selected_end_slot: str
+    notes: Optional[str] = None
+
+class BookingPolicyResponse(BaseModel):
+    version: str
+    role_weight: float
+    purpose_weight: float
+    role_scores: dict[str, float]
+    purpose_scores: dict[str, float]
+    alternative_weights: dict[str, float]
+
+class BookingPolicyUpdateRequest(BaseModel):
+    role_weight: Optional[float] = None
+    purpose_weight: Optional[float] = None
+    role_scores: Optional[dict[str, float]] = None
+    purpose_scores: Optional[dict[str, float]] = None
+    alternative_weights: Optional[dict[str, float]] = None
 
 class EventResponse(BaseModel):
     id: str
@@ -189,9 +223,56 @@ class EventResponse(BaseModel):
     is_academic: bool
     has_external_guests: bool
     priority_score: int
+    priority: int = 0
+    priority_label: str = "Normal Priority"
+    raw_score: Optional[float] = None
+    sigmoid_confidence: Optional[float] = None
+    explanation: Optional[Any] = None
+    event_purpose: Optional[str] = None
+    role_score: Optional[float] = None
+    purpose_score: Optional[float] = None
+    combined_priority_score: Optional[float] = None
+    policy_version: Optional[str] = None
+    requires_projector: Optional[bool] = False
+    requires_ac: Optional[bool] = False
+    requires_audio: Optional[bool] = False
+    room_type_preference: Optional[str] = None
+    recommended_action: Optional[str] = None
+    override_justification: Optional[str] = None
+    offered_alternatives: Optional[Any] = None
+    selected_alternative: Optional[Any] = None
     status: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class PriorityCalculationRequest(BaseModel):
+    level: str = "department"
+    is_academic: bool = True
+    expected_audience: int = 100
+    event_date: Optional[str] = None
+    has_external_guests: bool = False
+
+class PriorityCalculationResponse(BaseModel):
+    priority: int
+    priority_label: str
+    raw_score: float
+    sigmoid_confidence: float
+    cutoff: float
+    steepness: float
+    breakdown: Optional[Any] = None
+
+class PeoplePriorityResponse(BaseModel):
+    user_id: str
+    user_name: str
+    role: str
+    priority: int
+    priority_label: str
+    raw_score: float
+    sigmoid_confidence: float
+    cutoff: float
+    steepness: float
+
 
 # Facilities
 class FacilityResponse(BaseModel):

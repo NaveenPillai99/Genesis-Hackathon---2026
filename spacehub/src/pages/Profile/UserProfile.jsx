@@ -7,6 +7,7 @@ import {
   ROLE_DESCRIPTIONS,
 } from '../../lib/constants'
 import { listProfiles, listLostItems, listChangeRequests } from '../../lib/dataClient'
+import { computePersonPriority } from '../../lib/priorityScore'
 
 export default function UserProfile() {
   const { user, loginAs } = useAuth()
@@ -171,15 +172,36 @@ export default function UserProfile() {
             </div>
 
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
-                <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
-                  {ROLE_LABELS[role]}
-                </span>
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span>●</span> AUMS Verified
-                </span>
-              </div>
+              {(() => {
+                const personPrio = computePersonPriority(role)
+                const isStaff = ['resource_admin', 'sys_admin', 'faculty', 'lab_admin'].includes(role)
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
+                      {ROLE_LABELS[role]}
+                    </span>
+                    {personPrio.priority === 1 ? (
+                      <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                        ⚡ High Priority (1)
+                      </span>
+                    ) : (
+                      <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        Normal Priority (0)
+                      </span>
+                    )}
+                    {isStaff && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        (Weight: {personPrio.rawScore} · Sigmoid: {personPrio.sigmoidConfidence})
+                      </span>
+                    )}
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span>●</span> AUMS Verified
+                    </span>
+                  </div>
+                )
+              })()}
+
 
               <p className="text-xs text-slate-500 font-mono mt-1">{user.email}</p>
               <p className="text-xs text-slate-600 mt-1 font-medium">

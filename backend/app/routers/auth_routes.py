@@ -1,8 +1,10 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
-from app.schemas import LoginRequest, TokenResponse, UserResponse
+from app.schemas import LoginRequest, TokenResponse, UserResponse, PeoplePriorityResponse
+
 from app.auth import verify_password, create_access_token, get_current_user, record_audit, get_user_permissions
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -138,6 +140,10 @@ def get_full_profile(
         (LostFoundItem.current_custody == current_user.role)
     ).count()
 
+    from app.priority_service import calculate_people_priority
+    prio_data = calculate_people_priority(current_user.role)
+    is_staff = current_user.role in [ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN, ROLE_FACULTY, ROLE_LAB_ADMIN]
+
     return {
         "user": current_user,
         "role_label": role_labels.get(current_user.role, current_user.role),
@@ -148,16 +154,60 @@ def get_full_profile(
         "custody_items_count": custody_items,
         "egovernance_verified": True,
         "last_login": "Just now",
+        "priority": prio_data["priority"],
+        "priority_label": prio_data["priority_label"],
+        "raw_score": prio_data["raw_score"] if is_staff else None,
+        "sigmoid_confidence": prio_data["sigmoid_confidence"] if is_staff else None,
     }
 
-@router.put("/profile")
+@router.get("/priority", response_model=PeoplePriorityResponse)
+def get_people_priority(
+    user_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns role-based Sigmoid priority score for a person.
+    Evaluates strictly from the verified backend role (never frontend-submitted).
+    Only administrators can query priority for other user IDs.
+    """
+    from app.priority_service import calculate_people_priority
+    from app.config import ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN
+
+    target_user = current_user
+    if user_id and user_id != current_user.id:
+        if current_user.role not in [ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Account lacks administrative permission to inspect other users' priority."
+            )
+        target = db.query(User).filter(User.id == user_id).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="Requested user not found.")
+        target_user = target
+
+    res = calculate_people_priority(target_user.role)
+    return {
+        "user_id": target_user.id,
+        "user_name": target_user.name,
+        "role": target_user.role,
+        "priority": res["priority"],
+        "priority_label": res["priority_label"],
+        "raw_score": res["raw_score"],
+        "sigmoid_confidence": res["sigmoid_confidence"],
+        "cutoff": res["cutoff"],
+        "steepness": res["steepness"],
+    }
+
+@router.put("/profile", response_model=UserResponse)
 def update_profile(
     updates: dict,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Security: Users cannot modify their own roles or weights to manipulate priority
     if "name" in updates and updates["name"]:
-        current_user.name = updates["name"]
+        current_user.name = str(updates["name"]).strip()
     if "department" in updates:
         current_user.department = updates["department"]
     if "class_section" in updates:
@@ -166,3 +216,4 @@ def update_profile(
     db.refresh(current_user)
     record_audit(db, current_user.id, current_user.name, current_user.role, "PROFILE_UPDATED", "USER", current_user.id, "User updated profile info")
     return current_user
+

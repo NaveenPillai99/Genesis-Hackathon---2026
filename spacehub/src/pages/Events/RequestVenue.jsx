@@ -8,6 +8,27 @@ import { todayISO } from '../../lib/time'
 import { EVENT_LEVELS, EVENT_LEVEL_LABELS, ROOM_TYPES } from '../../lib/constants'
 import { ErrorNote } from '../../components/common/Feedback'
 
+const EVENT_PURPOSES = [
+  { name: 'Meeting / Discussion', score: 100 },
+  { name: 'Hackathon / Major Event', score: 90 },
+  { name: 'Webinar', score: 75 },
+  { name: 'Workshop', score: 65 },
+  { name: 'Seminar', score: 55 },
+  { name: 'Presentation', score: 45 },
+  { name: 'Regular Class', score: 30 },
+]
+
+const ROLE_SCORES = {
+  campus_director: 100,
+  dean: 85,
+  principal: 75,
+  hod: 65,
+  class_advisor: 50,
+  faculty: 35,
+  class_rep: 20,
+  student: 10,
+}
+
 export default function RequestVenue() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -22,15 +43,26 @@ export default function RequestVenue() {
     end: '19:00',
     audienceSize: 100,
     eventLevel: 'club',
+    eventPurpose: 'Meeting / Discussion',
     academic: true,
     externalGuests: false,
+    requiresProjector: true,
+    requiresAC: false,
+    requiresAudio: false,
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
   const venue = venues?.find((v) => v.id === form.venueRoomId)
 
-  const preview = useMemo(() => {
+  // 1. Continuous Priority Calculation P = (0.60 * R) + (0.40 * E)
+  const roleScore = ROLE_SCORES[user?.role] || 35
+  const selectedPurpose = EVENT_PURPOSES.find((p) => p.name === form.eventPurpose) || EVENT_PURPOSES[0]
+  const purposeScore = selectedPurpose.score
+  const combinedPriority = Math.round(((0.60 * roleScore) + (0.40 * purposeScore)) * 100) / 100
+
+  // 2. Legacy Sigmoid preview for backward compatibility
+  const legacyPreview = useMemo(() => {
     const today = new Date(`${todayISO()}T00:00:00`)
     const target = new Date(`${form.date}T00:00:00`)
     const daysAhead = Math.round((target - today) / 86400000)
@@ -56,6 +88,11 @@ export default function RequestVenue() {
       await createEventRequest({
         ...form,
         audienceSize: Number(form.audienceSize) || 0,
+        event_purpose: form.eventPurpose,
+        purpose: form.eventPurpose,
+        requires_projector: form.requiresProjector,
+        requires_ac: form.requiresAC,
+        requires_audio: form.requiresAudio,
         requestedBy: user.id,
       })
       navigate('/events')
@@ -67,24 +104,34 @@ export default function RequestVenue() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-xl font-extrabold text-slate-900">Request a venue</h1>
+    <div className="mx-auto max-w-3xl">
+      <h1 className="text-xl font-extrabold text-slate-900">Request a campus venue</h1>
       <p className="mb-5 text-sm text-slate-500">
-        This places a tentative hold, not a confirmed booking. An admin will decide between any competing requests.
+        Constraint-aware priority allocation: competing slots are resolved via verified requester role authority &amp; event purpose.
       </p>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr,260px]">
+      <div className="grid gap-5 lg:grid-cols-[1fr,280px]">
         <form onSubmit={submit} className="card flex flex-col gap-4 p-5">
           <div>
             <label className="label">Event title</label>
             <input required className="input" value={form.title} onChange={(e) => set('title', e.target.value)} />
           </div>
           <div>
-            <label className="label">Description</label>
-            <textarea className="input" rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
+            <label className="label">Event purpose &amp; classification</label>
+            <select
+              className="input font-medium"
+              value={form.eventPurpose}
+              onChange={(e) => set('eventPurpose', e.target.value)}
+            >
+              {EVENT_PURPOSES.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} (Purpose Score: {p.score})
+                </option>
+              ))}
+            </select>
           </div>
           <div>
-            <label className="label">Venue</label>
+            <label className="label">Preferred venue</label>
             <select required className="input" value={form.venueRoomId} onChange={(e) => set('venueRoomId', e.target.value)}>
               <option value="">Choose a venue…</option>
               {venues?.map((v) => (
@@ -120,7 +167,36 @@ export default function RequestVenue() {
             />
           </div>
           <div>
-            <label className="label">Event level</label>
+            <label className="label">Mandatory Facilities &amp; Equipment</label>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <label className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={form.requiresProjector}
+                  onChange={(e) => set('requiresProjector', e.target.checked)}
+                />
+                <span>📽️ Projector</span>
+              </label>
+              <label className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={form.requiresAC}
+                  onChange={(e) => set('requiresAC', e.target.checked)}
+                />
+                <span>❄️ Air Conditioning</span>
+              </label>
+              <label className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={form.requiresAudio}
+                  onChange={(e) => set('requiresAudio', e.target.checked)}
+                />
+                <span>🔊 Audio System</span>
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="label">Event scope</label>
             <div className="flex gap-2">
               {EVENT_LEVELS.map((lvl) => (
                 <button
@@ -140,30 +216,46 @@ export default function RequestVenue() {
           </div>
           <ErrorNote error={error} />
           <button className="btn-primary" disabled={busy} type="submit">
-            {busy ? 'Submitting…' : 'Submit request'}
+            {busy ? 'Submitting…' : 'Submit venue request'}
           </button>
         </form>
 
-        <aside className="card h-fit p-5">
-          <p className="label mb-1">Suggested priority score</p>
-          <p className="mb-3 text-3xl font-extrabold text-brand-700">
-            {preview.score}
-            <span className="text-base font-semibold text-slate-400">/{preview.max}</span>
-          </p>
-          <div className="flex flex-col gap-2">
-            {preview.breakdown.map((b) => (
-              <div key={b.label} className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">{b.label}</span>
-                <span className="font-semibold text-slate-700">
-                  {b.points}/{b.max}
-                </span>
-              </div>
-            ))}
+        <aside className="card h-fit p-5 space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Priority Rating (P)</span>
+              <span className="text-xs font-bold text-brand-700">{combinedPriority} / 100</span>
+            </div>
+            <div className="text-3xl font-black text-slate-900 tracking-tight">
+              {combinedPriority}
+              <span className="text-xs font-normal text-slate-400 ml-1">pts</span>
+            </div>
+            <p className="text-[11px] text-slate-500 font-mono mt-1">
+              P = (0.60 × {roleScore}) + (0.40 × {purposeScore})
+            </p>
           </div>
-          <p className="mt-3 text-[11px] text-slate-400">
-            Shown to the admin to help decide between competing requests. They can always override it, but must record why.
-          </p>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between items-center p-2 rounded bg-slate-50">
+              <span className="text-slate-500">Requester Authority (R)</span>
+              <span className="font-bold text-slate-800">{roleScore} / 100</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded bg-slate-50">
+              <span className="text-slate-500">Event Purpose Score (E)</span>
+              <span className="font-bold text-slate-800">{purposeScore} / 100</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded bg-slate-50">
+              <span className="text-slate-500">Role Verification</span>
+              <span className="font-bold text-emerald-600">Authenticated ✓</span>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-800 space-y-1">
+            <span className="font-bold block">💡 Alternative Venue Guarantee</span>
+            <p>If another higher-priority request is submitted for this same slot, our engine will automatically find and rank the top 3 alternative venues or times for you.</p>
+          </div>
         </aside>
+
       </div>
     </div>
   )
