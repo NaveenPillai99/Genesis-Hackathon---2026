@@ -5,7 +5,7 @@ import { ROLES } from '../../lib/constants'
 export default function AmritaPortalHero({ user, onActionClick, customAlerts = [] }) {
   const navigate = useNavigate()
   const [scrollIdx, setScrollIdx] = useState(0)
-  const [activeTile, setActiveTile] = useState('DOWNLOADS')
+  const [activeTile, setActiveTile] = useState(null)
   const [animatingTile, setAnimatingTile] = useState(null)
 
   // Format identity matching: Welcome! JITHU S( CB.PS.I5DAS23157 )
