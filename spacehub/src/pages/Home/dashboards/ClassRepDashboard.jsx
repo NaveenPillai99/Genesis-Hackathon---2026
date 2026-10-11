@@ -6,6 +6,8 @@ import {
   listRooms,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function ClassRepDashboard({ user }) {
   const [changeRequests, setChangeRequests] = useState([])
   const [rooms, setRooms] = useState([])
@@ -89,43 +91,20 @@ export default function ClassRepDashboard({ user }) {
         </div>
       )}
 
-      {/* Class Rep Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-cyan-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-cyan-500/20 text-cyan-200 border border-cyan-400/30">
-                🗂️ Class Representative Console
-              </span>
-              <span className="text-cyan-300 text-xs">• Assigned Cohort: {assignedSection}</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                Student Rep Scope Active
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome, {user?.name}
-            </h1>
-            <p className="text-cyan-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              Coordinate your section's academic schedule, book unoccupied rooms for revision sessions, submit reschedule proposals to Class Advisor {advisorName}, and organize class events.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setShowModal(true)}
-              className="rounded-xl bg-cyan-400 text-slate-950 px-3.5 py-2 text-xs font-black hover:bg-cyan-300 shadow-sm"
-            >
-              ⚡ Propose Reschedule
-            </button>
-            <Link
-              to="/classrooms"
-              className="rounded-xl bg-white/10 border border-white/20 text-white px-3.5 py-2 text-xs font-bold hover:bg-white/20"
-            >
-              🏫 Book Revision Slot
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        onActionClick={(label) => {
+          if (label === 'RESCHEDULE') setShowModal(true)
+        }}
+        customAlerts={[
+          {
+            id: 'rep-alt-1',
+            title: `Section Weekly Cap: 2.0 / 6.0 hrs utilized for ${assignedSection}`,
+            link: '#',
+          },
+        ]}
+      />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">

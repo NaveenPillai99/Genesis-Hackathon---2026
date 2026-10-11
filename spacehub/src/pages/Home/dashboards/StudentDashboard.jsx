@@ -8,6 +8,8 @@ import {
   listMyRoomBookings,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function StudentDashboard({ user }) {
   const [rooms, setRooms] = useState([])
   const [events, setEvents] = useState([])
@@ -47,43 +49,8 @@ export default function StudentDashboard({ user }) {
 
   return (
     <div className="space-y-6">
-      {/* Student Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-emerald-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                🎓 Student Academic Cockpit
-              </span>
-              <span className="text-emerald-300 text-xs">• Semester VII · Data Science</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                Student Authorization
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome back, {user?.name} 👋
-            </h1>
-            <p className="text-emerald-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              Your personalized campus portal: Discover free lecture rooms for self-study, browse available prototyping labs, submit eligible event requests, and track your lost property reports.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/classrooms"
-              className="rounded-xl bg-white text-slate-900 px-3.5 py-2 text-xs font-bold hover:bg-emerald-50 shadow-sm"
-            >
-              🪑 Free Rooms Radar
-            </Link>
-            <Link
-              to="/lost-found"
-              className="rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-white px-3.5 py-2 text-xs font-bold border border-emerald-400/30"
-            >
-              🔎 Report Lost Item
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero user={user} />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">

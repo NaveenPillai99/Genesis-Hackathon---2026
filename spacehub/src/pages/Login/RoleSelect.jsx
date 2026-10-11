@@ -95,21 +95,19 @@ export default function RoleSelect() {
           <div className="flex gap-2 mb-5 border-b border-slate-100 pb-3 text-xs font-bold">
             <button
               onClick={() => { setAuthMode('demo'); setRole(null); }}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                authMode === 'demo'
-                  ? 'bg-brand-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${authMode === 'demo'
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+                }`}
             >
               🚀 Instant Demo Switcher (9 Roles)
             </button>
             <button
               onClick={() => setAuthMode('credentials')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                authMode === 'credentials'
-                  ? 'bg-brand-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${authMode === 'credentials'
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+                }`}
             >
               🔒 Email &amp; Password Login
             </button>
@@ -187,6 +185,7 @@ export default function RoleSelect() {
                   )
                 })}
               </div>
+
             </>
           ) : (
             <>

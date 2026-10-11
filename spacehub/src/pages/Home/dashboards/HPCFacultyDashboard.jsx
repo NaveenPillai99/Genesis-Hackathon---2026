@@ -16,6 +16,7 @@ import {
   listHpcIncidents,
   createHpcIncident,
 } from '../../../lib/dataClient'
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
 
 export default function HPCFacultyDashboard({ user }) {
   const [overview, setOverview] = useState(null)
@@ -126,54 +127,26 @@ export default function HPCFacultyDashboard({ user }) {
         </div>
       )}
 
-      {/* HPC Header Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-violet-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-violet-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-violet-500/20 text-violet-200 border border-violet-400/30">
-                ⚡ HPC Supercomputing Cluster Console
-              </span>
-              <span className="text-violet-300 text-xs">• Center for Computational Engineering</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                SLURM Controller Online
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              HPC Operations: {user?.name}
-            </h1>
-            <p className="text-violet-200/80 text-xs md:text-sm mt-1 max-w-2xl">
-              Dedicated high-performance compute operations: Monitor DGX A100 &amp; EPYC nodes, review GPU allocations, manage maintenance drains, and inspect research compute workloads.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setShowIncidentModal(true)}
-              className="rounded-xl bg-red-600/90 hover:bg-red-600 text-white px-3.5 py-2 text-xs font-bold transition-all shadow-sm border border-red-500/30 flex items-center gap-1.5"
-            >
-              <span>⚠️</span>
-              <span>Log Node Incident</span>
-            </button>
-            <button
-              onClick={loadData}
-              className="rounded-xl bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 text-xs font-bold transition-all border border-white/20 flex items-center gap-1.5"
-            >
-              <span>🔄</span>
-              <span>Refresh Telemetry</span>
-            </button>
-          </div>
-        </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        customAlerts={[
+          {
+            id: 'hpc-alt-1',
+            title: 'Cluster Status: 3 nodes online, node-cpu-02 in maintenance for ECC RAM burn-in',
+            link: '#',
+          },
+        ]}
+      />
 
         {/* Notice of Synthetic Telemetry */}
-        <div className="mt-4 pt-3 border-t border-violet-800/30 flex items-center gap-2 text-[11px] text-amber-300 bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-600/30">
+        <div className="mt-4 pt-3 border-t border-violet-800/30 flex items-center gap-2 text-[11px] text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
           <span>ℹ️</span>
           <span className="font-semibold uppercase tracking-wider">Demonstration Data Notice:</span>
-          <span className="text-amber-200">
+          <span className="text-amber-800">
             Cluster metrics, node states, and utilization are synthetic telemetry for demonstration and hackathon evaluation. Real Prometheus/SLURM collectors integrate seamlessly via REST API.
           </span>
         </div>
-      </div>
 
       {/* KPI Overview Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-6 gap-3">

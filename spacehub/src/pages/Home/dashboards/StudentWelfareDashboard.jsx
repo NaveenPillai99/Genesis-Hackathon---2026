@@ -5,6 +5,8 @@ import {
   recordHandover,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function StudentWelfareDashboard({ user }) {
   const [lostItems, setLostItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -60,37 +62,22 @@ export default function StudentWelfareDashboard({ user }) {
         </div>
       )}
 
-      {/* Welfare Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-teal-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-teal-500/20 text-teal-200 border border-teal-400/30">
-                🎒 Student Welfare &amp; Custody Center
-              </span>
-              <span className="text-teal-300 text-xs">• Office of Student Welfare (AB3 Room 101)</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                Custodian Authority Active
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome, {user?.name}
-            </h1>
-            <p className="text-teal-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              Physical custody and dispatch center: Receive items found across campus common areas, inspect ownership claims with College ID verification, and log signed custody returns.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/lost-found"
-              className="rounded-xl bg-teal-400 text-slate-950 px-3.5 py-2 text-xs font-black hover:bg-teal-300 shadow-sm"
-            >
-              🎒 Full Custody Board
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        customAlerts={[
+          {
+            id: 'swf-alt-1',
+            title: `Locker Custody Inventory: ${inCustodyItems.length} student possessions secured in Student Welfare Locker (AB3 Room 101)`,
+            link: '/lost-found',
+          },
+          {
+            id: 'swf-alt-2',
+            title: `Pending Verification: ${pendingClaims.length} ownership claim(s) require physical ID check prior to handover`,
+            link: '/lost-found',
+          },
+        ]}
+      />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">

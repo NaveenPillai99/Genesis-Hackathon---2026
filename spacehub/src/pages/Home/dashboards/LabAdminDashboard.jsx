@@ -7,6 +7,8 @@ import {
   listFacilityBookings,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function LabAdminDashboard({ user }) {
   const [facilities, setFacilities] = useState([])
   const [inductions, setInductions] = useState([])
@@ -72,37 +74,22 @@ export default function LabAdminDashboard({ user }) {
         </div>
       )}
 
-      {/* Lab Admin Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-orange-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-orange-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-orange-500/20 text-orange-200 border border-orange-400/30">
-                🔬 Laboratory Fleet Administrator Desk
-              </span>
-              <span className="text-orange-300 text-xs">• Department of Computer Science &amp; Engineering</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                Departmental Scope Active
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome, {user?.name}
-            </h1>
-            <p className="text-orange-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              Oversee departmental laboratory facilities, manage lab assistant duty rosters, audit machine utilization, and configure safety eligibility rules.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/facilities"
-              className="rounded-xl bg-white text-slate-900 px-3.5 py-2 text-xs font-bold hover:bg-orange-50 shadow-sm"
-            >
-              📊 Facilities Registry
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        customAlerts={[
+          {
+            id: 'labadm-alt-1',
+            title: `Fleet Maintenance Status: ${maintenanceCount} workstation(s) / equipment units offline under scheduled maintenance`,
+            link: '/facilities',
+          },
+          {
+            id: 'labadm-alt-2',
+            title: `Staffing Roster: All 3 lab assistants actively on duty across AB1, AB2, and Innovation Wing`,
+            link: '/facilities',
+          },
+        ]}
+      />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">

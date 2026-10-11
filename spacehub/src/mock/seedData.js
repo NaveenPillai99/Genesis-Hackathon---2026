@@ -117,14 +117,14 @@ export const SEED_FACILITIES = [
 ]
 
 export const SEED_PROFILES = [
-  { id: 'user-student-1', name: 'Aarav Menon', role: ROLES.STUDENT, department: 'CSE, V A', email: 'aarav@cb.students.amrita.edu' },
-  { id: 'user-classrep-1', name: 'Devika Nair', role: ROLES.CLASS_REP, department: 'Int. M.Sc Data Science, VII B', email: 'devika.rep@cb.students.amrita.edu' },
-  { id: 'user-classadvisor-1', name: 'Dr Devika', role: ROLES.CLASS_ADVISOR, department: 'Mathematics (Class Advisor, VII B)', email: 'devika.advisor@cb.amrita.edu' },
-  { id: 'user-faculty-1', name: 'Dr Thilaga M', role: ROLES.FACULTY, department: 'CSE / Mathematics', email: 'thilaga@cb.amrita.edu' },
-  { id: 'user-hpcfaculty-1', name: 'Dr Radhika N', role: ROLES.HPC_FACULTY, department: 'Centre for Computational Engineering', email: 'radhika.hpc@cb.amrita.edu' },
-  { id: 'user-labassist-1', name: 'Mr Suresh Kumar', role: ROLES.LAB_ASSISTANT, department: 'HPC & Innovation Lab', email: 'suresh.lab@cb.amrita.edu' },
-  { id: 'user-labadmin-1', name: 'Dr Anand Shenoy', role: ROLES.LAB_ADMIN, department: 'Computational Engineering', email: 'anand.labadmin@cb.amrita.edu' },
-  { id: 'user-resourceadmin-1', name: 'Mr Ramesh Iyer', role: ROLES.RESOURCE_ADMIN, department: 'Event & Space Office', email: 'ramesh.admin@cb.amrita.edu' },
-  { id: 'user-welfare-1', name: 'Ms Priya Balan', role: ROLES.LOST_PROPERTY_HANDLER, department: 'Office of Student Welfare', email: 'priya.welfare@cb.amrita.edu' },
-  { id: 'user-sysadmin-1', name: 'Prof. K. R. Ramakrishnan', role: ROLES.SYS_ADMIN, department: 'ICT & Campus Systems', email: 'sysadmin@cb.amrita.edu' },
+  { id: 'user-student-1', name: 'Aarav Menon', role: ROLES.STUDENT, department: 'CSE, V A', email: 'aarav@cb.students.amrita.edu', rollNumber: 'CB.EN.U4CSE21234' },
+  { id: 'user-classrep-1', name: 'Devika Nair', role: ROLES.CLASS_REP, department: 'Int. M.Sc Data Science, VII B', email: 'devika.rep@cb.students.amrita.edu', rollNumber: 'CB.PS.I5DAS23157' },
+  { id: 'user-classadvisor-1', name: 'Dr Devika', role: ROLES.CLASS_ADVISOR, department: 'Mathematics (Class Advisor, VII B)', email: 'devika.advisor@cb.amrita.edu', rollNumber: 'EMP.FAC.MATH402' },
+  { id: 'user-faculty-1', name: 'Dr Thilaga M', role: ROLES.FACULTY, department: 'CSE / Mathematics', email: 'thilaga@cb.amrita.edu', rollNumber: 'EMP.FAC.CSE109' },
+  { id: 'user-hpcfaculty-1', name: 'Dr Radhika N', role: ROLES.HPC_FACULTY, department: 'Centre for Computational Engineering', email: 'radhika.hpc@cb.amrita.edu', rollNumber: 'EMP.FAC.CCE301' },
+  { id: 'user-labassist-1', name: 'Mr Suresh Kumar', role: ROLES.LAB_ASSISTANT, department: 'HPC & Innovation Lab', email: 'suresh.lab@cb.amrita.edu', rollNumber: 'EMP.STAFF.LAB204' },
+  { id: 'user-labadmin-1', name: 'Dr Anand Shenoy', role: ROLES.LAB_ADMIN, department: 'Computational Engineering', email: 'anand.labadmin@cb.amrita.edu', rollNumber: 'EMP.FAC.CCE102' },
+  { id: 'user-resourceadmin-1', name: 'Mr Ramesh Iyer', role: ROLES.RESOURCE_ADMIN, department: 'Event & Space Office', email: 'ramesh.admin@cb.amrita.edu', rollNumber: 'EMP.ADMIN.RES005' },
+  { id: 'user-welfare-1', name: 'Ms Priya Balan', role: ROLES.LOST_PROPERTY_HANDLER, department: 'Office of Student Welfare', email: 'priya.welfare@cb.amrita.edu', rollNumber: 'EMP.STAFF.SW012' },
+  { id: 'user-sysadmin-1', name: 'Prof. K. R. Ramakrishnan', role: ROLES.SYS_ADMIN, department: 'ICT & Campus Systems', email: 'sysadmin@cb.amrita.edu', rollNumber: 'EMP.DIR.ICT001' },
 ]

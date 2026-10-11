@@ -7,6 +7,8 @@ import {
   listProfiles,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function SystemAdminDashboard({ user }) {
   const [auditLogs, setAuditLogs] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -62,45 +64,22 @@ export default function SystemAdminDashboard({ user }) {
         </div>
       )}
 
-      {/* Sys Admin Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-rose-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-500/20 text-rose-200 border border-rose-400/30">
-                🛡️ System Administrator Command Console
-              </span>
-              <span className="text-rose-300 text-xs">• University Central IT &amp; Security</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                System Administrator Authority Active
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome, {user?.name}
-            </h1>
-            <p className="text-rose-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              System governance, user account statuses, role-permission matrices, immutable security audit trails, and university AUMS E-Governance API synchronization.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleTestErpSync}
-              disabled={syncStatus === 'syncing'}
-              className="rounded-xl bg-rose-500 hover:bg-rose-600 text-white px-3.5 py-2 text-xs font-bold shadow-sm flex items-center gap-1.5"
-            >
-              <span>🔄</span>
-              <span>{syncStatus === 'syncing' ? 'Syncing...' : 'Sync AUMS ERP'}</span>
-            </button>
-            <Link
-              to="/governance"
-              className="rounded-xl bg-white/10 border border-white/20 text-white px-3.5 py-2 text-xs font-bold hover:bg-white/20"
-            >
-              🛡️ Audit Trail
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        customAlerts={[
+          {
+            id: 'sys-alt-1',
+            title: `AUMS ERP Gateway Status: Operational • All 10 RBAC role security boundaries enforced`,
+            link: '/governance',
+          },
+          {
+            id: 'sys-alt-2',
+            title: `Identity Directory: ${profiles.length} registered campus profiles under active governance audit`,
+            link: '/governance',
+          },
+        ]}
+      />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">

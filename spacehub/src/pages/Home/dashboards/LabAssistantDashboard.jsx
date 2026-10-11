@@ -8,6 +8,8 @@ import {
   listFacilityBookings,
 } from '../../../lib/dataClient'
 
+import AmritaPortalHero from '../../../components/layout/AmritaPortalHero'
+
 export default function LabAssistantDashboard({ user }) {
   const [facilities, setFacilities] = useState([])
   const [inductions, setInductions] = useState([])
@@ -88,37 +90,22 @@ export default function LabAssistantDashboard({ user }) {
         </div>
       )}
 
-      {/* Lab Assistant Banner */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 p-6 md:p-8 text-white shadow-xl relative overflow-hidden border border-amber-800/40">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-500/20 text-amber-200 border border-amber-400/30">
-                🛠️ Lab Assistant Operations Console
-              </span>
-              <span className="text-amber-300 text-xs">• Assigned Scope: Innovation &amp; Prototyping Lab</span>
-              <span className="text-emerald-400 text-xs bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                Scoped RBAC Active
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Welcome, {user?.name}
-            </h1>
-            <p className="text-amber-200/80 text-xs md:text-sm mt-1 max-w-xl">
-              Manage your assigned lab equipment, record hardware faults, publish today's slots, and certify student safety badges.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/facilities"
-              className="rounded-xl bg-white text-slate-900 px-3.5 py-2 text-xs font-bold hover:bg-amber-50 shadow-sm"
-            >
-              📋 Equipment Catalog
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* Official Amrita College Portal Hero & Action Tiles */}
+      <AmritaPortalHero
+        user={user}
+        customAlerts={[
+          {
+            id: 'lab-alt-1',
+            title: `Safety Induction Checklist: ${inductions.filter((i) => !i.completed).length} student machine badge(s) awaiting sign-off`,
+            link: '/facilities',
+          },
+          {
+            id: 'lab-alt-2',
+            title: `Equipment Maintenance Log: ${maintenanceEquipment.length} item(s) currently marked under service`,
+            link: '/facilities',
+          },
+        ]}
+      />
 
       {/* KPI Tiles */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
