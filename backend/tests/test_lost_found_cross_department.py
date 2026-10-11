@@ -58,12 +58,9 @@ def test_student_cannot_browse_other_students_reports_or_matches(client):
     assert res_lost.status_code == 200
     lost_id = res_lost.json()["id"]
 
-    # Student 1 (Aarav) queries all items via /api/lost-found/
+    # Student 1 (Aarav) attempts to query all items via /api/lost-found/
     res_list = client.get("/api/lost-found/", headers=headers_st1)
-    assert res_list.status_code == 200
-    items = res_list.json()
-    # Student 1 must NEVER see Student 2's lost report in the public list
-    assert not any(i["id"] == lost_id for i in items)
+    assert res_list.status_code == 403  # Forbidden: Students cannot call global found-item listing!
 
     # Student 1 attempts to directly fetch Student 2's report by ID
     res_direct = client.get(f"/api/lost-found/{lost_id}", headers=headers_st1)

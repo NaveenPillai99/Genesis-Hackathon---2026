@@ -424,6 +424,20 @@ class StudentLostReportResponse(BaseModel):
     has_potential_match: bool = False
     potential_match_dept: Optional[str] = None
     collection_instructions: Optional[str] = None
+    match_reference_number: Optional[str] = None
+    match_date: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class StudentSafeMatchResponse(BaseModel):
+    id: str
+    match_reference_number: str
+    lost_report_id: str
+    lost_item_title: str
+    status: str = "potential_match"
+    receiving_department: str
+    message: str
+    collection_instructions: str
+    notification_date: datetime
     model_config = ConfigDict(from_attributes=True)
 
 class StudentFoundReportResponse(BaseModel):

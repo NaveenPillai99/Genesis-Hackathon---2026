@@ -14,7 +14,7 @@ from app.schemas import (
     HandoverUpdate, ItemClaimResponse, DepartmentResponse, CustodyLogResponse,
     InPersonVerificationRequest, CustodyTransferRequest,
     StudentLostReportResponse, StudentFoundReportResponse, StudentPublicFoundResponse,
-    HandlerMatchCandidateDetail
+    StudentSafeMatchResponse, HandlerMatchCandidateDetail
 )
 from app.auth import get_current_user, require_roles, record_audit, send_notification
 from app.config import (
@@ -248,7 +248,7 @@ def list_departments(db: Session = Depends(get_db)):
 def list_items(
     report_type: Optional[str] = Query(None, description="'found' or 'lost'"),
     category: Optional[str] = None,
-    status: Optional[str] = None,
+    item_status: Optional[str] = Query(None, alias="status"),
     department_id: Optional[str] = None,
     search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -256,19 +256,23 @@ def list_items(
 ):
     """
     List items with strict privacy enforcement:
-    - Students: CANNOT view other students' lost reports or full private details.
-      Returns only sanitized public found notices (StudentPublicFoundResponse) or their own reports.
-    - Handlers: returns case records scoped to their authorized department or Student Welfare.
+    - Students: FORBIDDEN from browsing the global found-item catalogue. Must submit a lost-item report.
+    - Handlers: returns case records scoped strictly to their authorized department or Student Welfare.
     """
     is_handler = current_user.role in CAN_PROCESS_CLAIMS
+    if not is_handler:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Public browsing of found items is prohibited. Submit a lost-item report to receive private match notifications."
+        )
 
     query = db.query(LostFoundItem)
     if report_type:
         query = query.filter(LostFoundItem.report_type == report_type)
     if category:
         query = query.filter(LostFoundItem.category == category)
-    if status:
-        query = query.filter(LostFoundItem.status == status)
+    if item_status:
+        query = query.filter(LostFoundItem.status == item_status)
     if department_id:
         query = query.filter(
             (LostFoundItem.destination_department_id == department_id) |
@@ -281,32 +285,6 @@ def list_items(
             (LostFoundItem.description.ilike(s)) |
             (LostFoundItem.location_found.ilike(s))
         )
-
-    if not is_handler:
-        # Student privacy rule:
-        # Never expose other students' lost reports or private fields!
-        query = query.filter(
-            or_(
-                LostFoundItem.report_type == "found",
-                and_(LostFoundItem.report_type == "lost", LostFoundItem.finder_id == current_user.id)
-            )
-        )
-        items = query.order_by(LostFoundItem.created_at.desc()).all()
-        # Return sanitized public responses
-        return [
-            StudentPublicFoundResponse(
-                id=i.id,
-                category=i.category,
-                title=i.title,
-                location_found=i.location_found,
-                found_date=i.found_date,
-                destination_department_name=i.destination_department_name,
-                custody_status=i.custody_status,
-                status=i.status,
-                created_at=i.created_at
-            )
-            for i in items
-        ]
 
     # Handler scoping
     if current_user.role not in [ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
@@ -330,13 +308,14 @@ def list_items(
     items = query.order_by(LostFoundItem.created_at.desc()).all()
     return [format_handler_case(i, db) for i in items]
 
+@router.get("/my-lost-reports", response_model=List[StudentLostReportResponse])
 @router.get("/my-lost-items", response_model=List[StudentLostReportResponse])
 def get_my_lost_items(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Student's My Lost Items Dashboard (Section 6):
+    Student's My Lost Items Dashboard:
     Returns ONLY the authenticated student's own lost reports with safe match alerts and collection instructions.
     Does NOT disclose other reports' detailed info, finder identity, scores, or factor breakdowns.
     """
@@ -350,19 +329,24 @@ def get_my_lost_items(
         has_match = False
         dept_name = None
         instructions = None
+        ref_no = None
+        match_dt = None
 
         if r.status not in ["returned", "recovered", "closed", "cancelled"]:
             candidates = db.query(ItemMatchCandidate).filter(
                 ItemMatchCandidate.lost_report_id == r.id,
-                ItemMatchCandidate.match_score >= 65.0
+                ItemMatchCandidate.match_score >= 65.0,
+                ItemMatchCandidate.review_status != "dismissed"
             ).order_by(ItemMatchCandidate.match_score.desc()).all()
 
             for c in candidates:
                 found = c.found_item
-                if found and found.status not in ["returned", "closed", "cancelled"]:
+                if found and found.status not in ["returned", "recovered", "closed", "cancelled"]:
                     has_match = True
                     dept_name = found.destination_department_name or "Department Office"
-                    instructions = f"Visit the {dept_name} office with your college ID card for ownership verification."
+                    instructions = f"Please visit the {dept_name} office with your college ID card. The department will verify ownership before releasing the item."
+                    ref_no = f"LF-MATCH-{c.id[:8].upper()}"
+                    match_dt = c.last_calculated_at
                     break
 
         results.append(StudentLostReportResponse(
@@ -379,10 +363,73 @@ def get_my_lost_items(
             created_at=r.created_at,
             has_potential_match=has_match,
             potential_match_dept=dept_name,
-            collection_instructions=instructions
+            collection_instructions=instructions,
+            match_reference_number=ref_no,
+            match_date=match_dt
         ))
 
     return results
+
+@router.get("/my-matches", response_model=List[StudentSafeMatchResponse])
+@router.get("/my-match-notifications", response_model=List[StudentSafeMatchResponse])
+def get_my_matches(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Owner-Specific Match Queries (Section 3):
+    Enforces in the database query:
+      match.lost_report.owner_user_id == authenticated_user.id
+    Retrieves only active match candidates linked to lost-item reports belonging to the authenticated user.
+    Excludes returned, closed, cancelled or otherwise inactive found and lost items.
+    Returns safe response (StudentSafeMatchResponse) without complete found-item records.
+    """
+    candidates = (
+        db.query(ItemMatchCandidate)
+        .join(LostFoundItem, ItemMatchCandidate.lost_report_id == LostFoundItem.id)
+        .filter(
+            LostFoundItem.finder_id == current_user.id,
+            LostFoundItem.report_type == "lost",
+            LostFoundItem.status.in_(["active", "reported", "potential_match"]),
+            ItemMatchCandidate.match_score >= 65.0,
+            ItemMatchCandidate.review_status != "dismissed"
+        )
+        .all()
+    )
+
+    safe_matches = []
+    seen_pairs = set()
+    for c in candidates:
+        found = c.found_item
+        lost = c.lost_item
+        if not found or not lost:
+            continue
+        if found.status in ["returned", "recovered", "closed", "cancelled"]:
+            continue
+        if lost.status in ["returned", "recovered", "closed", "cancelled"]:
+            continue
+
+        pair_key = (lost.id, found.id)
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+
+        dept_name = found.destination_department_name or "Department Office"
+        ref_no = f"LF-MATCH-{c.id[:8].upper()}"
+
+        safe_matches.append(StudentSafeMatchResponse(
+            id=c.id,
+            match_reference_number=ref_no,
+            lost_report_id=lost.id,
+            lost_item_title=lost.title,
+            status="potential_match",
+            receiving_department=dept_name,
+            message=f"A found item with a similar description to your lost-item report has been submitted to the {dept_name}.",
+            collection_instructions=f"Please visit the {dept_name} office with your college ID card. The department will verify ownership before releasing the item.",
+            notification_date=c.last_calculated_at
+        ))
+
+    return safe_matches
 
 @router.get("/my-found-items", response_model=List[StudentFoundReportResponse])
 def get_my_found_items(

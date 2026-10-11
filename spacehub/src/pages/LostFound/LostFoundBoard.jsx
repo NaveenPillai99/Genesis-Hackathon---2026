@@ -36,12 +36,13 @@ export const DEFAULT_DEPARTMENTS = [
 export default function LostFoundBoard() {
   const { user } = useAuth()
   const isHandler = CAN_PROCESS_LOST_FOUND_CLAIMS.has(user?.role)
-  const [activeTab, setActiveTab] = useState(isHandler ? 'custody' : 'browse')
+  const [activeTab, setActiveTab] = useState(isHandler ? 'custody' : 'my-lost')
   const [items, setItems] = useState([])
   const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS)
   const [rooms, setRooms] = useState([])
   const [timetable, setTimetable] = useState([])
   const [myLostReports, setMyLostReports] = useState([])
+  const [myMatches, setMyMatches] = useState([])
   const [handlerCases, setHandlerCases] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -158,19 +159,35 @@ export default function LostFoundBoard() {
         console.warn('Departments fetch fallback:', err)
       }
 
-      // 2. Fetch items from FastAPI backend (sanitized for students, scoped for handlers)
+      // 2. Fetch data based strictly on role permissions
       let allItems = []
-      try {
-        const liveItems = await api.getLostFoundItems()
-        if (Array.isArray(liveItems)) {
-          allItems = liveItems.map(normalizeItem)
+      if (isHandler) {
+        try {
+          const liveItems = await api.getLostFoundItems()
+          if (Array.isArray(liveItems)) {
+            allItems = liveItems.map(normalizeItem)
+          }
+        } catch (err) {
+          console.warn('Live API items failed, falling back:', err)
+          const mockItems = await listLostItems()
+          allItems = (mockItems || []).map(normalizeItem)
         }
-      } catch (err) {
-        console.warn('Live API items failed, falling back:', err)
-        const mockItems = await listLostItems()
-        allItems = (mockItems || []).map(normalizeItem)
+        setItems(allItems)
+
+        // Fetch Handler Scoped Cases if authorized handler
+        try {
+          const cases = await api.getHandlerCases()
+          if (Array.isArray(cases)) {
+            setHandlerCases(cases.map(normalizeItem))
+          }
+        } catch (err) {
+          console.warn('Failed to load handler cases:', err)
+        }
+      } else {
+        // Students NEVER have access to global found items catalogue
+        setItems([])
+        setHandlerCases([])
       }
-      setItems(allItems)
 
       // Fetch My Lost Items (student private dashboard)
       try {
@@ -182,15 +199,15 @@ export default function LostFoundBoard() {
         console.warn('Failed to load my lost reports:', err)
       }
 
-      // Fetch Handler Scoped Cases if authorized handler
-      if (isHandler) {
+      // Fetch Owner-Specific Safe Matches (for students)
+      if (!isHandler) {
         try {
-          const cases = await api.getHandlerCases()
-          if (Array.isArray(cases)) {
-            setHandlerCases(cases.map(normalizeItem))
+          const matches = await api.getMyMatches()
+          if (Array.isArray(matches)) {
+            setMyMatches(matches)
           }
         } catch (err) {
-          console.warn('Failed to load handler cases:', err)
+          console.warn('Failed to load student match notifications:', err)
         }
       }
 
@@ -497,23 +514,11 @@ export default function LostFoundBoard() {
               }`}
             >
               <span>📦</span>
-              <span>All Public Notices ({foundItems.length})</span>
+              <span>Department Inventory ({custodianItems.length})</span>
             </button>
           </>
         ) : (
           <>
-            <button
-              onClick={() => setActiveTab('browse')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
-                activeTab === 'browse'
-                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <span>📦</span>
-              <span>Browse Found Items ({foundItems.length})</span>
-            </button>
-
             <button
               onClick={() => setActiveTab('my-lost')}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
@@ -523,25 +528,13 @@ export default function LostFoundBoard() {
               }`}
             >
               <span>📋</span>
-              <span>My Lost Items ({myLostReports.length})</span>
-              {myLostReports.some((r) => r.has_potential_match || r.status === 'potential_match') && (
+              <span>My Lost Reports ({myLostReports.length})</span>
+              {(myMatches.length > 0 || myLostReports.some((r) => r.has_potential_match || r.status === 'potential_match')) && (
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
               )}
             </button>
           </>
         )}
-
-        <button
-          onClick={() => setActiveTab('report-found')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
-            activeTab === 'report-found'
-              ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <span>✨</span>
-          <span>Report Found Item (Dept Routing)</span>
-        </button>
 
         <button
           onClick={() => setActiveTab('report-lost')}
@@ -554,10 +547,22 @@ export default function LostFoundBoard() {
           <span>🔍</span>
           <span>Report Lost Item (Cross-Dept)</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('report-found')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+            activeTab === 'report-found'
+              ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <span>✨</span>
+          <span>Report Found Item (Dept Routing)</span>
+        </button>
       </div>
 
-      {/* ---------------- TAB 1: BROWSE FOUND ITEMS ---------------- */}
-      {activeTab === 'browse' && (
+      {/* ---------------- TAB 1: DEPARTMENT INVENTORY (AUTHORIZED HANDLERS ONLY) ---------------- */}
+      {activeTab === 'browse' && isHandler && (
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
@@ -744,110 +749,194 @@ export default function LostFoundBoard() {
           </div>
 
           {myLostReports.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-400">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500 shadow-xs space-y-3">
               <span className="text-4xl block mb-2">🔍</span>
-              You have not submitted any active lost item reports.
+              <h3 className="text-base font-bold text-slate-800">No Lost Item Reports Active</h3>
+              <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+                You have not reported a lost item yet. Submit a lost-item report to receive private notifications if a matching found item is reported.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={() => setActiveTab('report-lost')}
+                  className="btn-primary !py-2 !px-4 text-sm font-semibold"
+                >
+                  + Submit a Lost-Item Report
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {myLostReports.map((report) => {
-                const isCancelled = report.status === 'cancelled'
-                const isRecovered = report.status === 'recovered' || report.status === 'returned'
-                const hasMatch = report.has_potential_match || report.status === 'potential_match'
-
-                const statusTone = isRecovered
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : isCancelled
-                  ? 'bg-slate-100 text-slate-600 border-slate-200'
-                  : hasMatch
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : 'bg-blue-50 text-blue-800 border-blue-200'
-
-                return (
-                  <div
-                    key={report.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4 flex flex-col justify-between hover:shadow-md transition-shadow"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-xs text-slate-400 font-medium">
-                            Reported on {report.found_date || (report.created_at ? new Date(report.created_at).toLocaleDateString() : 'Recent')}
-                          </span>
-                          <h3 className="font-bold text-slate-900 text-base mt-0.5">
-                            {report.title}
-                          </h3>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase border ${statusTone}`}>
-                          {hasMatch && !isRecovered && !isCancelled
-                            ? 'Potential match identified'
-                            : report.status?.replace('_', ' ')}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        {report.description}
-                      </p>
-
-                      {report.location_found && (
-                        <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                          <span>📍</span>
-                          <span>Last known location: <strong>{report.location_found}</strong></span>
-                        </div>
-                      )}
-
-                      {/* Safe Student Potential Match Notification (Section 5 & 6) */}
-                      {hasMatch && !isRecovered && !isCancelled && (
-                        <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 text-xs text-amber-950 space-y-2">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                            <span>🔔</span>
-                            <span>Possible Lost Item Match</span>
-                          </div>
-                          <p className="text-amber-900 text-[11px] leading-relaxed">
-                            A found item with a similar description to your lost-item report has been submitted to the{' '}
-                            <strong>{report.potential_match_dept || 'Department Office'}</strong>.
-                          </p>
-                          <p className="text-amber-800 text-[11px] leading-relaxed">
-                            <strong>Next step:</strong> Please visit the <strong>{report.potential_match_dept || 'department'}</strong> office with your{' '}
-                            <strong>college ID card</strong> to verify ownership and collect the item if it is confirmed to be yours.
-                          </p>
-                          <div className="text-[10px] text-amber-800/80 bg-amber-100/70 p-2 rounded-lg font-medium">
-                            The department will verify your identity before releasing the item.
-                          </div>
-                        </div>
-                      )}
-
-                      {isRecovered && (
-                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 flex items-center gap-2">
-                          <span className="text-base">✓</span>
-                          <span>Item ownership successfully verified and collected. Case closed.</span>
-                        </div>
-                      )}
-
-                      {isCancelled && (
-                        <div className="rounded-xl bg-slate-100 border border-slate-200 p-2.5 text-xs text-slate-600">
-                          This lost report was cancelled by you and excluded from active matching.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    {!isRecovered && !isCancelled && (
-                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[11px] text-slate-400">
-                          Active scanning across all configured departments
-                        </span>
-                        <button
-                          onClick={() => handleCancelLostReport(report.id)}
-                          className="text-xs text-red-600 hover:text-red-800 font-semibold px-2.5 py-1 rounded-lg hover:bg-red-50 border border-red-200 transition-colors"
-                        >
-                          Cancel Report
-                        </button>
-                      </div>
-                    )}
+            <div className="space-y-6">
+              {/* Section 4: Private Possible Matches Section */}
+              {myMatches && myMatches.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🔔</span>
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                      Private Possible Matches ({myMatches.length})
+                    </h3>
                   </div>
-                )
-              })}
+                  <div className="grid gap-3.5 md:grid-cols-2">
+                    {myMatches.map((m) => (
+                      <div
+                        key={m.id}
+                        className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/90 p-5 shadow-xs space-y-3.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔔</span>
+                            <div>
+                              <span className="font-extrabold text-amber-950 text-base block">
+                                Possible Match Found
+                              </span>
+                              <span className="text-[11px] font-mono text-amber-800 font-medium">
+                                Ref: {m.match_reference_number}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-amber-200 text-amber-900 border border-amber-300">
+                            Potential Match
+                          </span>
+                        </div>
+
+                        <div className="space-y-2.5 text-xs">
+                          <div className="bg-white/80 p-3 rounded-xl border border-amber-200">
+                            <div className="text-[11px] text-slate-500 font-medium">Your Lost Report Reference:</div>
+                            <div className="font-bold text-slate-900 text-sm mt-0.5">{m.lost_item_title}</div>
+                          </div>
+
+                          <div className="p-3.5 bg-white/90 rounded-xl border border-amber-200 space-y-2">
+                            <p className="text-amber-950 font-medium leading-relaxed">
+                              &ldquo;{m.message}&rdquo;
+                            </p>
+                            <p className="text-slate-800 leading-relaxed">
+                              &ldquo;{m.collection_instructions}&rdquo;
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-amber-900/90 pt-1">
+                            <span>Receiving Office: <strong>{m.receiving_department}</strong></span>
+                            <span>Notified: {m.notification_date ? new Date(m.notification_date).toLocaleDateString() : 'Recent'}</span>
+                          </div>
+
+                          <div className="text-[10px] text-slate-500 bg-amber-100/70 p-2.5 rounded-lg leading-relaxed">
+                            ⚠️ <strong>Private Verification Protocol:</strong> This notification indicates a potential similarity across campus departments. It is not definitive proof of ownership. Full found item descriptions and photographs remain strictly confidential. Please visit the indicated office in person with your College ID card to establish ownership.
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* My Lost Reports Grid */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📋</span>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                    Your Active Lost Reports ({myLostReports.length})
+                  </h3>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {myLostReports.map((report) => {
+                    const isCancelled = report.status === 'cancelled'
+                    const isRecovered = report.status === 'recovered' || report.status === 'returned'
+                    const hasMatch = report.has_potential_match || report.status === 'potential_match'
+
+                    const statusTone = isRecovered
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : isCancelled
+                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                      : hasMatch
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-blue-50 text-blue-800 border-blue-200'
+
+                    return (
+                      <div
+                        key={report.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4 flex flex-col justify-between hover:shadow-md transition-shadow"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-xs text-slate-400 font-medium">
+                                Reported on {report.found_date || (report.created_at ? new Date(report.created_at).toLocaleDateString() : 'Recent')}
+                              </span>
+                              <h3 className="font-bold text-slate-900 text-base mt-0.5">
+                                {report.title}
+                              </h3>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase border ${statusTone}`}>
+                              {hasMatch && !isRecovered && !isCancelled
+                                ? 'Potential match identified'
+                                : report.status?.replace('_', ' ')}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {report.description}
+                          </p>
+
+                          {report.location_found && (
+                            <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                              <span>📍</span>
+                              <span>Last known location: <strong>{report.location_found}</strong></span>
+                            </div>
+                          )}
+
+                          {/* Safe Student Potential Match Notification (Section 4 & 5) */}
+                          {hasMatch && !isRecovered && !isCancelled && (
+                            <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 text-xs text-amber-950 space-y-2">
+                              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                                <span>🔔</span>
+                                <span>Possible Lost Item Match</span>
+                              </div>
+                              <p className="text-amber-900 text-[11px] leading-relaxed">
+                                A found item with a similar description to your lost-item report has been submitted to the{' '}
+                                <strong>{report.potential_match_dept || 'Department Office'}</strong>.
+                              </p>
+                              <p className="text-amber-800 text-[11px] leading-relaxed">
+                                <strong>Next step:</strong> Please visit the <strong>{report.potential_match_dept || 'department'}</strong> office with your{' '}
+                                <strong>college ID card</strong> to verify ownership and collect the item if it is confirmed to be yours.
+                              </p>
+                              <div className="text-[10px] text-amber-800/80 bg-amber-100/70 p-2 rounded-lg font-medium">
+                                The department will verify your identity before releasing the item.
+                              </div>
+                            </div>
+                          )}
+
+                          {isRecovered && (
+                            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 flex items-center gap-2">
+                              <span className="text-base">✓</span>
+                              <span>Item ownership successfully verified and collected. Case closed.</span>
+                            </div>
+                          )}
+
+                          {isCancelled && (
+                            <div className="rounded-xl bg-slate-100 border border-slate-200 p-2.5 text-xs text-slate-600">
+                              This lost report was cancelled by you and excluded from active matching.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        {!isRecovered && !isCancelled && (
+                          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400">
+                              Active scanning across all configured departments
+                            </span>
+                            <button
+                              onClick={() => handleCancelLostReport(report.id)}
+                              className="text-xs text-red-600 hover:text-red-800 font-semibold px-2.5 py-1 rounded-lg hover:bg-red-50 border border-red-200 transition-colors"
+                            >
+                              Cancel Report
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -861,7 +950,7 @@ export default function LostFoundBoard() {
           timetable={timetable}
           user={user}
           onSuccess={() => {
-            setActiveTab('browse')
+            setActiveTab(isHandler ? 'browse' : 'my-lost')
             loadData()
           }}
         />
