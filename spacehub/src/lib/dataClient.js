@@ -44,6 +44,7 @@ export const {
   createEventRequest,
   createDirectEvent,
   decideEvent,
+  recommendEvent,
   selectEventAlternative,
   autoDecideCluster,
   listMyEvents,

@@ -103,6 +103,9 @@ class TimetableSlot(Base):
     faculty = Column(String, nullable=True)
     class_section = Column(String, nullable=True)
     advisor = Column(String, nullable=True)
+    department = Column(String, nullable=True, index=True)
+    batch = Column(String, nullable=True)
+    academic_year = Column(String, nullable=True)
 
     room = relationship("Room", back_populates="timetable_slots")
 
@@ -185,7 +188,18 @@ class EventRequest(Base):
     override_justification = Column(Text, nullable=True)
     offered_alternatives = Column(Text, nullable=True)
     selected_alternative = Column(Text, nullable=True)
-    status = Column(String, default="pending", index=True)  # DRAFT, PENDING, UNDER_REVIEW, APPROVED, REJECTED, ALTERNATIVES_OFFERED, ALTERNATIVE_SELECTED, CANCELLED, COMPLETED
+    status = Column(String, default="pending", index=True)  # DRAFT, PENDING, UNDER_REVIEW, RECOMMENDED, CHANGES_REQUESTED, AWAITING_DIRECTOR_APPROVAL, APPROVED, REJECTED, ALTERNATIVES_OFFERED, ALTERNATIVE_SELECTED, CANCELLED, COMPLETED
+    department = Column(String, nullable=True, index=True)
+    department_recommendation = Column(String, nullable=True)
+    department_reviewer_id = Column(String, nullable=True)
+    department_reviewer_name = Column(String, nullable=True)
+    department_review_notes = Column(Text, nullable=True)
+    director_decision = Column(String, nullable=True)
+    director_id = Column(String, nullable=True)
+    director_name = Column(String, nullable=True)
+    director_notes = Column(Text, nullable=True)
+    director_override_applied = Column(Boolean, default=False)
+    delegated_approver_id = Column(String, nullable=True)
     admin_notes = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

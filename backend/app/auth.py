@@ -15,20 +15,37 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "campus_director": {
         "classroom.view",
+        "classroom.manage",
+        "classroom.book",
         "timetable.view",
+        "timetable.view_all",
+        "timetable.modify_official",
         "event.view",
+        "event.view_all",
         "event.request.create",
         "event.request.view_own",
+        "event.request.review",
+        "event.request.recommend",
+        "event.request.approve",
+        "event.request.final_approve",
+        "event.priority.override",
+        "policy.manage",
         "facility.view",
+        "facility.manage_all",
         "audit.view",
+        "analytics.view",
     },
     "dean": {
         "classroom.view",
         "timetable.view",
+        "timetable.view_scoped",
         "event.view",
         "event.request.create",
         "event.request.view_own",
+        "event.request.review",
+        "event.request.recommend",
         "facility.view",
+        "analytics.view_scoped",
     },
     "principal": {
         "classroom.view",
@@ -36,15 +53,23 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "event.view",
         "event.request.create",
         "event.request.view_own",
+        "event.request.review",
+        "event.request.recommend",
         "facility.view",
     },
     "hod": {
         "classroom.view",
         "timetable.view",
+        "timetable.view_department",
+        "timetable.request_change",
+        "timetable.review_change",
         "event.view",
         "event.request.create",
         "event.request.view_own",
+        "event.request.review",
+        "event.request.recommend",
         "facility.view",
+        "analytics.view_department",
     },
     "student": {
 
@@ -84,6 +109,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "timetable.view",
         "timetable.review_change",
         "timetable.approve_change",
+        "event.view",
+        "event.request.create",
+        "event.request.view_own",
+        "event.request.review",
+        "event.request.recommend",
         "lost_found.view",
         "lost_found.manage_classroom_custody",
         "lost_found.report",
@@ -140,6 +170,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "event.request.create",
         "event.request.view_own",
         "event.request.review",
+        "event.request.recommend",
         "event.request.approve",
         "event.request.reject",
         "event.venue.manage",
@@ -171,6 +202,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "event.view",
         "event.request.view_own",
         "event.request.review",
+        "event.request.recommend",
         "event.request.approve",
         "event.request.reject",
         "event.venue.manage",
@@ -366,3 +398,92 @@ def send_notification(
     )
     db.add(notification)
     db.commit()
+
+def is_campus_director(user: User) -> bool:
+    """Checks if the user has institution-wide Campus Director authority."""
+    return user.role == "campus_director"
+
+def can_finally_approve_events(user: User, db: Session = None) -> bool:
+    """
+    CRITICAL RULE: The Campus Director is the final approval authority for event requests
+    and campus resource bookings. Other roles can only review, recommend, or request modifications.
+    """
+    if user.role == "campus_director":
+        return True
+    return False
+
+def get_user_department_scopes(user: User, db: Session = None) -> set[str]:
+    """
+    Returns the set of authorized department codes/names for this user.
+    - Campus Director: institution-wide access (returns {"*"})
+    - Sys Admin: institution-wide operational access (returns {"*"})
+    - Dean: assigned departments from ResourceAssignment or department string
+    - HOD: assigned department
+    - Other staff: user's primary department
+    """
+    if user.role in ("campus_director", "sys_admin"):
+        return {"*"}
+
+    depts = set()
+    if user.department:
+        d = user.department.strip()
+        depts.add(d)
+        lower = d.lower()
+        if "computer science" in lower:
+            depts.update({"CSE", "Computer Science & Engineering", "Department of Computer Science & Engineering"})
+        if "mathematics" in lower:
+            depts.update({"MATH", "Mathematics", "Department of Mathematics"})
+        if "electronics" in lower:
+            depts.update({"ECE", "Electronics & Communication", "Department of Electronics & Communication"})
+        if "mechanical" in lower:
+            depts.update({"MECH", "Mechanical Engineering", "Department of Mechanical Engineering"})
+        if "deanery of engineering" in lower:
+            depts.update({
+                "CSE", "ECE", "MECH", "MATH",
+                "Computer Science & Engineering", "Department of Computer Science & Engineering",
+                "Electronics & Communication", "Department of Electronics & Communication",
+                "Mechanical Engineering", "Department of Mechanical Engineering",
+                "Mathematics", "Department of Mathematics"
+            })
+
+    if db:
+        assignments = (
+            db.query(ResourceAssignment)
+            .filter(
+                ResourceAssignment.user_id == user.id,
+                ResourceAssignment.scope_type.in_(["department", "school"])
+            )
+            .all()
+        )
+        for a in assignments:
+            depts.add(a.scope_id.strip())
+
+    return depts
+
+def get_user_class_scopes(user: User, db: Session = None) -> set[str]:
+    """
+    Returns the set of authorized class section strings for this user.
+    - Campus Director & SysAdmin: institution-wide access (returns {"*"})
+    - Class Advisor: assigned class sections
+    - Class Rep & Student: own registered class_section
+    """
+    if user.role in ("campus_director", "sys_admin"):
+        return {"*"}
+
+    classes = set()
+    if user.class_section:
+        classes.add(user.class_section.strip())
+
+    if db:
+        assignments = (
+            db.query(ResourceAssignment)
+            .filter(
+                ResourceAssignment.user_id == user.id,
+                ResourceAssignment.scope_type.in_(["class_section", "teaching_class"])
+            )
+            .all()
+        )
+        for a in assignments:
+            classes.add(a.scope_id.strip())
+
+    return classes

@@ -12,20 +12,26 @@ import {
 import { Spinner } from '../../components/common/Feedback'
 
 const ROLE_ORDER = [
-  ROLES.STUDENT,
-  ROLES.CLASS_REP,
+  ROLES.CAMPUS_DIRECTOR,
+  ROLES.DEAN,
+  ROLES.HOD,
   ROLES.CLASS_ADVISOR,
   ROLES.FACULTY,
+  ROLES.CLASS_REP,
+  ROLES.STUDENT,
   ROLES.HPC_FACULTY,
-  ROLES.LAB_ASSISTANT,
-  ROLES.LAB_ADMIN,
   ROLES.RESOURCE_ADMIN,
+  ROLES.LAB_ADMIN,
+  ROLES.LAB_ASSISTANT,
   ROLES.LOST_PROPERTY_HANDLER,
   ROLES.SYS_ADMIN,
 ]
 
 const ROLE_ICON = {
-  [ROLES.STUDENT]: '🎓',
+  [ROLES.CAMPUS_DIRECTOR]: '🏛️',
+  [ROLES.DEAN]: '🎓',
+  [ROLES.HOD]: '🏢',
+  [ROLES.STUDENT]: '🎒',
   [ROLES.CLASS_REP]: '🗂️',
   [ROLES.CLASS_ADVISOR]: '🧑‍💼',
   [ROLES.FACULTY]: '🧑‍🏫',
@@ -33,7 +39,7 @@ const ROLE_ICON = {
   [ROLES.LAB_ASSISTANT]: '🛠️',
   [ROLES.LAB_ADMIN]: '🔬',
   [ROLES.RESOURCE_ADMIN]: '🗝️',
-  [ROLES.LOST_PROPERTY_HANDLER]: '🎒',
+  [ROLES.LOST_PROPERTY_HANDLER]: '📦',
   [ROLES.SYS_ADMIN]: '🛡️',
 }
 
@@ -86,7 +92,7 @@ export default function RoleSelect() {
             Unified Campus Resource Management, Academic Scheduling, and Lost &amp; Found Platform
           </p>
           <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
-            <span>●</span> All 10 RBAC University Roles Supported
+            <span>●</span> Hierarchical University Architecture (Director, Dean, HOD, Faculty, Students)
           </div>
         </div>
 
@@ -100,7 +106,7 @@ export default function RoleSelect() {
                 : 'text-slate-600 hover:bg-slate-100'
                 }`}
             >
-              🚀 Instant Demo Switcher (9 Roles)
+              🚀 Instant Persona Switcher (All Roles)
             </button>
             <button
               onClick={() => setAuthMode('credentials')}

@@ -177,12 +177,30 @@ def test_08_central_resource_admin_can_process_event_requests(client):
     assert ev_res.status_code == 200
     ev_id = ev_res.json()["id"]
 
-    # Central Resource Admin approves it
+    # Central Resource Admin cannot finalize approval (403 Forbidden)
     admin_headers = auth_headers("user-resourceadmin-1", "resource_admin")
-    rev_res = client.post(
+    rev_deny = client.post(
         f"/api/events/{ev_id}/review",
         headers=admin_headers,
-        json={"decision": "approved", "notes": "Approved by Resource Admin"}
+        json={"decision": "approved", "notes": "Resource Admin attempts final approval"}
+    )
+    assert rev_deny.status_code == 403
+
+    # Central Resource Admin can submit recommendation
+    rec_res = client.post(
+        f"/api/events/{ev_id}/recommend",
+        headers=admin_headers,
+        json={"recommendation": "RECOMMENDED", "notes": "Recommended by Resource Admin"}
+    )
+    assert rec_res.status_code == 200
+    assert rec_res.json()["status"] == "awaiting_director_approval"
+
+    # Campus Director performs final approval
+    director_headers = auth_headers("user-director-1", "campus_director")
+    rev_res = client.post(
+        f"/api/events/{ev_id}/review",
+        headers=director_headers,
+        json={"decision": "approved", "notes": "Final approval by Campus Director"}
     )
     assert rev_res.status_code == 200
     assert rev_res.json()["status"] == "approved"
@@ -191,22 +209,22 @@ def test_08_central_resource_admin_can_process_event_requests(client):
 # TEST 9: A user cannot approve their own request
 # ==============================================================================
 def test_09_user_cannot_approve_own_request(client):
-    admin_headers = auth_headers("user-resourceadmin-1", "resource_admin")
+    director_headers = auth_headers("user-director-1", "campus_director")
 
-    # Resource Admin submits a venue request as organizer
+    # Campus Director submits a venue request as organizer
     ev_res = client.post(
         "/api/events/",
-        headers=admin_headers,
+        headers=director_headers,
         json={
-            "name": "Space Office Staff Meeting",
-            "organizer": "Mr Ramesh Iyer",
+            "name": "Director Annual Address",
+            "organizer": "Dr Sasangan Ramanathan",
             "venue_id": "VENUE-SEMINAR-AB1",
             "event_date": "2026-11-22",
             "start_slot": "slot8",
             "end_slot": "slot10",
             "expected_audience": 40,
-            "level": "department",
-            "is_academic": False,
+            "level": "university",
+            "is_academic": True,
             "has_external_guests": False
         }
     )
@@ -216,8 +234,8 @@ def test_09_user_cannot_approve_own_request(client):
     # Same user attempts to self-approve
     self_rev_res = client.post(
         f"/api/events/{ev_id}/review",
-        headers=admin_headers,
-        json={"decision": "approved", "notes": "Self approval"}
+        headers=director_headers,
+        json={"decision": "approved", "notes": "Self approval attempt"}
     )
     assert self_rev_res.status_code == 403
     assert "Conflict of Interest" in self_rev_res.json()["detail"]

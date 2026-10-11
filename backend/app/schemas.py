@@ -93,6 +93,9 @@ class TimetableSlotResponse(BaseModel):
     faculty: Optional[str] = None
     class_section: Optional[str] = None
     advisor: Optional[str] = None
+    department: Optional[str] = None
+    batch: Optional[str] = None
+    academic_year: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Bookings
@@ -182,9 +185,13 @@ class EventCreate(BaseModel):
     room_type_preference: str = "event_venue"
 
 class EventReview(BaseModel):
-    decision: str  # 'approved', 'rejected', 'declined', 'alternatives_offered'
+    decision: str  # 'approved', 'rejected', 'declined', 'recommended', 'changes_requested', 'under_review', 'alternatives_offered'
     notes: Optional[str] = None
     override_justification: Optional[str] = None
+
+class EventRecommendationCreate(BaseModel):
+    recommendation: str  # 'RECOMMENDED', 'CHANGES_REQUESTED', 'UNDER_REVIEW'
+    notes: Optional[str] = None
 
 class AlternativeSelectionRequest(BaseModel):
     selection_type: str = "alternative_venue"  # 'alternative_venue' or 'alternative_time'
@@ -242,6 +249,16 @@ class EventResponse(BaseModel):
     offered_alternatives: Optional[Any] = None
     selected_alternative: Optional[Any] = None
     status: str
+    department: Optional[str] = None
+    department_recommendation: Optional[str] = None
+    department_reviewer_id: Optional[str] = None
+    department_reviewer_name: Optional[str] = None
+    department_review_notes: Optional[str] = None
+    director_decision: Optional[str] = None
+    director_id: Optional[str] = None
+    director_name: Optional[str] = None
+    director_notes: Optional[str] = None
+    director_override_applied: Optional[bool] = False
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

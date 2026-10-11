@@ -315,10 +315,27 @@ def test_event_approval_and_conflict_preservation(client):
     # CRITICAL: High priority event remains pending! NO auto-approval!
     assert evt_data["status"] == "pending"
 
-    # 2. Resource Admin approves it
-    res_approve = client.post(
+    # 2. Resource Admin cannot finalize approval (403 Forbidden)
+    res_adm_deny = client.post(
         f"/api/events/{evt_data['id']}/review",
         headers=admin_headers,
+        json={"decision": "approved", "notes": "Resource Admin attempts final approval."}
+    )
+    assert res_adm_deny.status_code == 403
+
+    # Resource Admin can recommend
+    res_rec = client.post(
+        f"/api/events/{evt_data['id']}/recommend",
+        headers=admin_headers,
+        json={"recommendation": "RECOMMENDED", "notes": "Recommended by Resource Admin."}
+    )
+    assert res_rec.status_code == 200
+
+    # Campus Director performs final approval
+    director_headers = auth_headers("user-director-1", "campus_director")
+    res_approve = client.post(
+        f"/api/events/{evt_data['id']}/review",
+        headers=director_headers,
         json={"decision": "approved", "notes": "Approved for university conference."}
     )
     assert res_approve.status_code == 200

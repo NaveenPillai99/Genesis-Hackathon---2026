@@ -50,6 +50,20 @@ def ensure_columns(target_engine):
             ("event_requests", "override_justification", "TEXT"),
             ("event_requests", "offered_alternatives", "TEXT"),
             ("event_requests", "selected_alternative", "TEXT"),
+            ("event_requests", "department", "TEXT"),
+            ("event_requests", "department_recommendation", "TEXT"),
+            ("event_requests", "department_reviewer_id", "TEXT"),
+            ("event_requests", "department_reviewer_name", "TEXT"),
+            ("event_requests", "department_review_notes", "TEXT"),
+            ("event_requests", "director_decision", "TEXT"),
+            ("event_requests", "director_id", "TEXT"),
+            ("event_requests", "director_name", "TEXT"),
+            ("event_requests", "director_notes", "TEXT"),
+            ("event_requests", "director_override_applied", "BOOLEAN DEFAULT 0"),
+            ("event_requests", "delegated_approver_id", "TEXT"),
+            ("timetable_slots", "department", "TEXT"),
+            ("timetable_slots", "batch", "TEXT"),
+            ("timetable_slots", "academic_year", "TEXT"),
         ]:
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
@@ -279,8 +293,15 @@ def seed_database(db: SessionLocal = None):
 
     # 3. Resource Assignments (Resource-level scoping)
     scopes = [
+        ("user-dean-1", "department", "CSE"),
+        ("user-dean-1", "department", "ECE"),
+        ("user-dean-1", "department", "MECH"),
+        ("user-dean-1", "school", "Deanery of Engineering"),
+        ("user-hod-1", "department", "CSE"),
         ("user-classadvisor-1", "class_section", "Int. M.Sc Data Science, VII B"),
         ("user-classrep-1", "class_section", "Int. M.Sc Data Science, VII B"),
+        ("user-faculty-1", "teaching_class", "Int. M.Sc Data Science, VII B"),
+        ("user-faculty-1", "teaching_class", "CSE, VII A"),
         ("user-labassist-1", "facility", "fac-3dprint"),
         ("user-labassist-1", "facility", "fac-vr"),
         ("user-hpcfaculty-1", "facility", "fac-hpc"),
@@ -437,21 +458,21 @@ def seed_database(db: SessionLocal = None):
 
     # 8. Timetable Slots
     slots_data = [
-        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e103b", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e103b", day="Friday", slot_id="slot8", start_time="14:05", end_time="14:55", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC343", course_name="Business Analytics", faculty="Dr Subhraaj R", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot6", start_time="12:25", end_time="13:15", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Tuesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-W102", day="Tuesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC401L", course_name="Open Lab-I", faculty="Ms Kavipriya", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Thursday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E103B", day="Friday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC403", course_name="Reinforcement Learning", faculty="Dr Jeyaramakrishnan", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika"),
-        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika"),
-        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika"),
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="room-ab1-e103b", day="Monday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="room-ab1-e103b", day="Friday", slot_id="slot8", start_time="14:05", end_time="14:55", code="22CSC553", course_name="Cloud Computing", faculty="Dr Kavitha P", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC343", course_name="Business Analytics", faculty="Dr Subhraaj R", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Monday", slot_id="slot6", start_time="12:25", end_time="13:15", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Tuesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-W102", day="Tuesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22CSC401L", course_name="Open Lab-I", faculty="Ms Kavipriya", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Wednesday", slot_id="slot5", start_time="11:35", end_time="12:25", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="MATH", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Thursday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22MAT401", course_name="Probabilistic Graphical Models", faculty="Dr Kalaivani", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="MATH", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E103B", day="Friday", slot_id="slot4", start_time="10:45", end_time="11:35", code="22CSC403", course_name="Reinforcement Learning", faculty="Dr Jeyaramakrishnan", class_section="Int. M.Sc Data Science, VII B", advisor="Dr Devika", department="CSE", batch="2023-2028", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika", department="CSE", batch="2023-2027", academic_year="2026-27"),
+        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot2", start_time="08:50", end_time="09:40", code="22CSC401", course_name="Deep Learning", faculty="Dr Thilaga M", class_section="CSE, VII A", advisor="Dr Devika", department="CSE", batch="2023-2027", academic_year="2026-27"),
+        TimetableSlot(room_id="AB1-E104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika", department="CSE", batch="2023-2027", academic_year="2026-27"),
+        TimetableSlot(room_id="room-ab1-e104", day="Monday", slot_id="slot3", start_time="09:40", end_time="10:30", code="22CSC404", course_name="Data Security", faculty="Dr Boovamithar", class_section="CSE, VII A", advisor="Dr Devika", department="CSE", batch="2023-2027", academic_year="2026-27"),
     ]
     for s in slots_data:
         ex = db.query(TimetableSlot).filter(
@@ -461,6 +482,10 @@ def seed_database(db: SessionLocal = None):
         ).first()
         if not ex:
             db.add(s)
+        else:
+            ex.department = s.department
+            ex.batch = s.batch
+            ex.academic_year = s.academic_year
     db.commit()
 
     # 9. Facilities

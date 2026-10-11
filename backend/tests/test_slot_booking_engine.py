@@ -160,10 +160,11 @@ def test_confirmed_booking_conflicts_return_409(client):
     assert req.status_code == 200
     evt_id = req.json()["id"]
 
-    # Approve it
+    # Approve it via Campus Director
+    director_headers = auth_headers("user-director-1", "campus_director")
     appr = client.post(
         f"/api/events/{evt_id}/review",
-        headers=admin_headers,
+        headers=director_headers,
         json={"decision": "approved", "notes": "Confirmed allocation."}
     )
     assert appr.status_code == 200
@@ -372,19 +373,21 @@ def test_requiring_justification_for_lower_priority_override(client):
     assert f_res.status_code == 200
     faculty_evt_id = f_res.json()["id"]
 
-    # Admin tries to approve the lower-priority faculty request WITHOUT justification
+    director_headers = auth_headers("user-director-1", "campus_director")
+
+    # Campus Director tries to approve the lower-priority faculty request WITHOUT justification
     bad_approve = client.post(
         f"/api/events/{faculty_evt_id}/review",
-        headers=admin_headers,
+        headers=director_headers,
         json={"decision": "approved", "notes": ""}
     )
     assert bad_approve.status_code == 400
     assert "justification" in bad_approve.json()["detail"].lower()
 
-    # Admin provides valid written justification -> Succeeds!
+    # Campus Director provides valid written justification -> Succeeds!
     good_approve = client.post(
         f"/api/events/{faculty_evt_id}/review",
-        headers=admin_headers,
+        headers=director_headers,
         json={
             "decision": "approved",
             "override_justification": "Approved per Dean's verbal rescheduling of the keynote to next semester."
@@ -522,10 +525,11 @@ def test_alternative_selection_and_availability_recheck(client):
     assert sel_data["venue_id"] == "VENUE-SEMINAR-AB1"
 
     # 3. If another request attempts to select this newly booked slot when confirmed, conflict is raised
-    # Approve first
+    # Approve first via Campus Director
+    director_headers = auth_headers("user-director-1", "campus_director")
     client.post(
         f"/api/events/{evt_id}/review",
-        headers=admin_headers,
+        headers=director_headers,
         json={"decision": "approved", "notes": "Approved alternative."}
     )
 
