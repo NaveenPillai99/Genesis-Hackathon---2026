@@ -5,6 +5,8 @@ import { ROLES } from '../../lib/constants'
 export default function AmritaPortalHero({ user, onActionClick, customAlerts = [] }) {
   const navigate = useNavigate()
   const [scrollIdx, setScrollIdx] = useState(0)
+  const [activeTile, setActiveTile] = useState('DOWNLOADS')
+  const [animatingTile, setAnimatingTile] = useState(null)
 
   // Format identity matching: Welcome! JITHU S( CB.PS.I5DAS23157 )
   const rollOrCode =
@@ -137,25 +139,38 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
     // Default: Student action grid (Exact matches from the Amrita college portal screenshot)
     return [
       { label: 'PROFILE', icon: '🎓', path: '/profile' },
-      { label: 'TIMETABLE', icon: '📅', path: '/academic-scheduling' },
-      { label: 'FREE ROOMS', icon: '🪑', path: '/classrooms' },
-      { label: 'LOST & FOUND', icon: '🎒', path: '/lost-found' },
+      { label: 'PAYMENTS', icon: '₹', path: '#' },
+      { label: 'GATE PASS', icon: '🏛️', path: '#' },
       { label: 'SERVICES', icon: '📝', path: '/facilities' },
       { label: 'COMPLAINTS', icon: '💬', path: '#' },
       { label: 'DOWNLOADS', icon: '📥', path: '#' },
       { label: 'DOCUMENTS', icon: '📄', path: '#' },
+      { label: 'INCIDENTS', icon: '💬', path: '#' },
       { label: 'CLASS ATTENDANCE', icon: '🎓', path: '#' },
-      { label: 'CAMPUS EVENTS', icon: '🎤', path: '/events' },
-      { label: 'GATE PASS', icon: '🏛️', path: '#' },
       { label: 'LEAVE LIST', icon: '🏛️', path: '#' },
       { label: 'AWARDS', icon: '🎓', path: '#' },
+      { label: 'TIMETABLE', icon: '👤', path: '/academic-scheduling' },
+      { label: 'SUPPLEMENTARY', icon: '₹', path: '#' },
       { label: 'MARKS', icon: '👤', path: '#' },
+      { label: 'REFUND', icon: '🎓', path: '#' },
       { label: 'COURSE-FEEDBACK', icon: '🎓', path: '#' },
-      { label: 'INCIDENTS', icon: '💬', path: '#' },
     ]
   }
 
   const actionTiles = getActionTiles(user?.role)
+
+  function handleTileClick(tile) {
+    setActiveTile(tile.label)
+    setAnimatingTile(tile.label)
+
+    if (tile.path && tile.path !== '#') {
+      setTimeout(() => {
+        navigate(tile.path)
+      }, 350)
+    } else if (onActionClick) {
+      onActionClick(tile.label)
+    }
+  }
 
   return (
     <div className="space-y-4 mb-6">
@@ -252,26 +267,52 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
 
       {/* 4. Action Pills Grid (Authentic Amrita College Portal 4-column layout) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-        {actionTiles.map((tile, idx) => (
-          <button
-            key={idx}
-            onClick={() => {
-              if (tile.path && tile.path !== '#') {
-                navigate(tile.path)
-              } else if (onActionClick) {
-                onActionClick(tile.label)
-              }
-            }}
-            className="flex items-center justify-between bg-white rounded-lg shadow-xs hover:shadow-md border border-slate-200/90 overflow-hidden transition-all duration-150 group h-12 text-left cursor-pointer hover:border-[#990033]/40"
-          >
-            <span className="flex-1 text-center font-bold text-[11px] sm:text-xs tracking-wide text-[#990033] uppercase px-2 truncate group-hover:text-[#7d0029]">
-              {tile.label}
-            </span>
-            <div className="w-11 sm:w-12 h-full bg-[#990033] text-white flex items-center justify-center text-xs sm:text-sm [clip-path:polygon(32%_0%,100%_0%,100%_100%,0%_100%)] pl-2 transition-all group-hover:bg-[#80002b] shrink-0">
-              {tile.icon}
-            </div>
-          </button>
-        ))}
+        {actionTiles.map((tile, idx) => {
+          const isFilled = activeTile === tile.label || animatingTile === tile.label
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onMouseDown={() => setAnimatingTile(tile.label)}
+              onClick={() => handleTileClick(tile)}
+              className={`relative flex items-center justify-between rounded-lg shadow-xs hover:shadow-md border overflow-hidden group h-12 text-left cursor-pointer transition-all duration-200 select-none ${
+                isFilled
+                  ? 'border-[#990033] shadow-md ring-1 ring-[#990033]/40'
+                  : 'bg-white border-slate-200/90 hover:border-[#990033]/60'
+              }`}
+            >
+              {/* Right-to-Left Red Fill Animation Layer */}
+              <span
+                className={`absolute inset-0 bg-[#990033] pointer-events-none z-0 ${
+                  isFilled ? 'scale-x-100' : 'scale-x-0'
+                }`}
+                style={{
+                  transformOrigin: 'right center',
+                  transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+              />
+
+              {/* Action Title Label */}
+              <span
+                className={`flex-1 text-center font-bold text-[11px] sm:text-xs tracking-wide uppercase px-2 truncate relative z-10 transition-colors duration-250 ${
+                  isFilled ? 'text-white' : 'text-[#990033] group-hover:text-[#7d0029]'
+                }`}
+              >
+                {tile.label}
+              </span>
+
+              {/* Right-side Angled Badge with Icon */}
+              <div
+                className={`w-11 sm:w-12 h-full text-white flex items-center justify-center text-xs sm:text-sm [clip-path:polygon(32%_0%,100%_0%,100%_100%,0%_100%)] pl-2 shrink-0 relative z-10 transition-colors duration-200 ${
+                  isFilled ? 'bg-[#990033]' : 'bg-[#990033] group-hover:bg-[#80002b]'
+                }`}
+              >
+                <span className="font-bold drop-shadow-xs">{tile.icon}</span>
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
