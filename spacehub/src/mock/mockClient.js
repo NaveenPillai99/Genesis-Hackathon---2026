@@ -277,31 +277,51 @@ export const SEED_EVENTS = [
   },
 ]
 
+export const SEED_CHANGE_REQUESTS = [
+  {
+    id: 'tt-req-001',
+    courseCode: '22CSC401',
+    courseName: 'Deep Learning',
+    classSection: 'Int. M.Sc Data Science, VII B',
+    requesterId: 'user-classrep-1',
+    requesterName: 'Devika Nair',
+    originalDay: 'Friday',
+    originalSlot: 'slot2',
+    originalRoomId: 'room-ab1-e104',
+    proposedDay: 'Thursday',
+    proposedSlot: 'slot4',
+    proposedRoomId: 'room-ab1-e104',
+    proposedDate: '2026-10-15',
+    reason: 'Students participating in Inter-University Hackathon on Friday morning. Requesting reschedule to Thursday Slot 4.',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'tt-req-002',
+    courseCode: '22CSC404',
+    courseName: 'Data Security',
+    classSection: 'Int. M.Sc Data Science, VII B',
+    requesterId: 'user-classrep-1',
+    requesterName: 'Devika Nair',
+    originalDay: 'Thursday',
+    originalSlot: 'slot8',
+    originalRoomId: 'room-ab1-e103b',
+    proposedDay: 'Tuesday',
+    proposedSlot: 'slot2',
+    proposedRoomId: 'room-ab1-e103b',
+    proposedDate: '2026-10-22',
+    reason: 'Guest lecture by Industry Cyber Defense Specialist scheduled during Tuesday morning slot.',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  },
+]
+
 function freshDb() {
   return {
     profiles: SEED_PROFILES,
     rooms: SEED_ROOMS,
     timetableSlots: buildSeedTimetableSlots(),
-    timetableChangeRequests: [
-      {
-        id: 'tt-req-001',
-        courseCode: '22CSC401',
-        courseName: 'Deep Learning',
-        classSection: 'Int. M.Sc Data Science, VII B',
-        requesterId: 'user-classrep-1',
-        requesterName: 'Devika Nair',
-        originalDay: 'Friday',
-        originalSlot: 'slot2',
-        originalRoomId: 'room-ab1-e104',
-        proposedDay: 'Thursday',
-        proposedSlot: 'slot4',
-        proposedRoomId: 'room-ab1-e104',
-        proposedDate: '2026-10-15',
-        reason: 'Students participating in Inter-University Hackathon on Friday morning. Requesting reschedule to Thursday Slot 4.',
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      },
-    ],
+    timetableChangeRequests: [...SEED_CHANGE_REQUESTS],
     roomBookings: [],
     blockedDates: [],
     events: [...SEED_EVENTS],
@@ -594,6 +614,24 @@ function load() {
         }
       }
     }
+    // Synchronize SEED_CHANGE_REQUESTS so timetable change proposals are immediately available
+    if (parsed) {
+      if (!Array.isArray(parsed.timetableChangeRequests) || parsed.timetableChangeRequests.length === 0) {
+        parsed.timetableChangeRequests = [...SEED_CHANGE_REQUESTS]
+        save(parsed)
+      } else {
+        let reqChanged = false
+        for (const sr of SEED_CHANGE_REQUESTS) {
+          if (!parsed.timetableChangeRequests.some((r) => r.id === sr.id)) {
+            parsed.timetableChangeRequests.push(sr)
+            reqChanged = true
+          }
+        }
+        if (reqChanged) {
+          save(parsed)
+        }
+      }
+    }
     return parsed
   } catch (err) {
     console.error('spacehub: failed to load mock DB, reseeding', err)
@@ -620,6 +658,13 @@ export function resetDemoEvents() {
   return mutate((d) => {
     d.events = [...SEED_EVENTS]
     return d.events
+  })
+}
+
+export function resetDemoChangeRequests() {
+  return mutate((d) => {
+    d.timetableChangeRequests = [...SEED_CHANGE_REQUESTS]
+    return d.timetableChangeRequests
   })
 }
 

@@ -321,7 +321,7 @@ export default function DeanDashboard({ user }) {
                         <span>Review Details</span>
                       </button>
 
-                      {['pending', 'under_review'].includes(req.status?.toLowerCase()) && (
+                      {['pending', 'under_review'].includes(req.status?.toLowerCase()) ? (
                         <>
                           <button
                             onClick={() => openRecommendModal(req, 'RECOMMENDED')}
@@ -336,6 +336,15 @@ export default function DeanDashboard({ user }) {
                             Request Modifications
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => openRecommendModal(req, rec === 'CHANGES_REQUESTED' ? 'RECOMMENDED' : 'CHANGES_REQUESTED')}
+                          className="rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs px-3 py-1.5 border border-indigo-200 transition flex items-center gap-1"
+                          title="Update recommendation sent to Director"
+                        >
+                          <span>🔄</span>
+                          <span>Update Recommendation</span>
+                        </button>
                       )}
                     </div>
                   </div>

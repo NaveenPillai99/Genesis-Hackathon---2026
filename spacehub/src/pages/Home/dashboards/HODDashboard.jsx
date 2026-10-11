@@ -323,7 +323,7 @@ export default function HODDashboard({ user }) {
                         <span>Review Details</span>
                       </button>
 
-                      {['pending', 'under_review'].includes(req.status?.toLowerCase()) && (
+                      {['pending', 'under_review'].includes(req.status?.toLowerCase()) ? (
                         <>
                           <button
                             onClick={() => openRecommendModal(req, 'RECOMMENDED')}
@@ -338,6 +338,15 @@ export default function HODDashboard({ user }) {
                             Request Changes
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => openRecommendModal(req, rec === 'CHANGES_REQUESTED' ? 'RECOMMENDED' : 'CHANGES_REQUESTED')}
+                          className="rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs px-3 py-1.5 border border-blue-200 transition flex items-center gap-1"
+                          title="Update recommendation sent to Director"
+                        >
+                          <span>🔄</span>
+                          <span>Update Recommendation</span>
+                        </button>
                       )}
                     </div>
                   </div>

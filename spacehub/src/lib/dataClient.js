@@ -65,6 +65,7 @@ export const {
   listChangeRequests,
   proposeChangeRequest,
   reviewChangeRequest,
+  resetDemoChangeRequests,
   // Enhanced Lost & Found
   reportSmartLostItem,
   submitClaim,

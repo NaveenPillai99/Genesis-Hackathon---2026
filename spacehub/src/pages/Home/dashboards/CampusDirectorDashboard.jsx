@@ -185,6 +185,24 @@ export default function CampusDirectorDashboard({ user }) {
     setAltVenueModalOpen(true)
   }
 
+  async function handleReopenEvent(event) {
+    setIsSubmitting(true)
+    try {
+      await decideEvent(event.id, {
+        decision: 'awaiting_director_approval',
+        reason: 'Re-opened by Campus Director for institutional re-evaluation.',
+        byUserId: user?.id || 'user-director-1',
+      })
+      flash(`Event '${event.name || event.title}' re-opened for Director decision. All options are active again!`)
+      if (reviewModalOpen) setReviewModalOpen(false)
+      await loadData()
+    } catch (e) {
+      alert(`Error re-opening event: ${e.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   async function handleReassignVenue(newRoomId) {
     if (!selectedEventForAlt) return
     setIsSubmitting(true)
@@ -506,7 +524,7 @@ export default function CampusDirectorDashboard({ user }) {
                         <span>Review Details</span>
                       </button>
 
-                      {!isApproved && !isRejected && (
+                      {!isApproved && !isRejected ? (
                         <>
                           <button
                             onClick={() => handleApproveClick(req)}
@@ -531,6 +549,34 @@ export default function CampusDirectorDashboard({ user }) {
                             Decline
                           </button>
                         </>
+                      ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => handleReopenEvent(req)}
+                            disabled={isSubmitting}
+                            className="rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs px-2.5 py-1.5 border border-amber-300 transition flex items-center gap-1"
+                            title="Reset back to pending so you can approve, decline, or suggest venue again"
+                          >
+                            <span>🔄</span>
+                            <span>Re-evaluate Decision</span>
+                          </button>
+                          {isApproved ? (
+                            <button
+                              onClick={() => handleOpenDecline(req)}
+                              className="rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs px-2.5 py-1.5 border border-rose-200 transition"
+                            >
+                              Revoke &amp; Decline
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleApproveClick(req)}
+                              disabled={isSubmitting}
+                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-2.5 py-1.5 shadow-xs transition"
+                            >
+                              ✓ Sanction Now
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
