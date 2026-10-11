@@ -48,6 +48,7 @@ export const {
   selectEventAlternative,
   autoDecideCluster,
   listMyEvents,
+  resetDemoEvents,
   getRecentBookersOfRoom,
   getPeopleWithActivityInBlock,
   listBlocks,

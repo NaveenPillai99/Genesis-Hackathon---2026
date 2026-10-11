@@ -98,6 +98,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  recommendEvent: (eventId, data) => apiRequest(`/events/${eventId}/recommend`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
   getBookingPolicy: () => apiRequest('/events/policy'),
   updateBookingPolicy: (data) => apiRequest('/events/policy', {
     method: 'PUT',
