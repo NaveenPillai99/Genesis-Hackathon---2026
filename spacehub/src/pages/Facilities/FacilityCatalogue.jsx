@@ -1,182 +1,90 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useLiveData } from '../../lib/useLiveData'
-import {
-  cancelFacilityRequest,
-  decideMentorStage,
-  listFacilities,
-  listFacilityRequests,
-  listMyFacilityRequests,
-  listProfiles,
-  respondToAlternative,
-} from '../../lib/dataClient'
-import { formatTimeRange } from '../../lib/time'
-import { CAN_APPROVE_FACILITY_MENTOR_STAGE, CAN_MANAGE_FACILITY, FACILITY_REQUEST_STATUS_LABELS, ROLES } from '../../lib/constants'
+import { listFacilities, listFacilityApprovalQueue, listMyFacilityRequests } from '../../lib/dataClient'
+import { CAN_REQUEST_FACILITY, NEEDS_FACULTY_ENDORSEMENT } from '../../lib/constants'
 import FacilityCard from './FacilityCard'
-import FacilityRequestRow from './FacilityRequestRow'
-import FacilityAdminReviewRow from './FacilityAdminReviewRow'
-import Badge from '../../components/common/Badge'
-import EmptyState from '../../components/common/EmptyState'
-import { ErrorNote, Spinner } from '../../components/common/Feedback'
+import FacilityScheduleBoard from './FacilityScheduleBoard'
+import FacilityApprovals from './FacilityApprovals'
+import MyFacilityRequests from './MyFacilityRequests'
+import { Spinner } from '../../components/common/Feedback'
 
-const STATUS_TONE = { pending_mentor: 'amber', pending_facility: 'blue', alternative_suggested: 'purple', approved: 'green', declined: 'red' }
-
+/**
+ * The Facilities section every role sees. Four tabs:
+ *   Browse     — request access to any lab
+ *   Schedule   — who's using which facility, when
+ *   Approvals  — endorsement / allocation queue (badge-counted)
+ *   My requests— where each of my requests sits in the chain
+ */
 export default function FacilityCatalogue() {
   const { user } = useAuth()
+  const [tab, setTab] = useState('browse')
+
   const { data: facilities, loading } = useLiveData(() => listFacilities(), [])
-  const { data: profiles } = useLiveData(() => listProfiles(), [])
+  const { data: queue } = useLiveData(() => listFacilityApprovalQueue(user), [user.id, user.role])
   const { data: myRequests } = useLiveData(() => listMyFacilityRequests(user.id), [user.id])
 
-  const isMentorApprover = CAN_APPROVE_FACILITY_MENTOR_STAGE.has(user.role)
-  const isFacilityAdmin = CAN_MANAGE_FACILITY.has(user.role)
+  const pendingForMe = (queue?.endorsements?.length ?? 0) + (queue?.labReviews?.length ?? 0)
+  const openMine = (myRequests ?? []).filter((r) =>
+    ['pending_faculty', 'pending_lab', 'alternative_offered'].includes(r.status)
+  ).length
 
-  const { data: pendingMentor } = useLiveData(
-    () => (isMentorApprover ? listFacilityRequests({ status: 'pending_mentor' }) : Promise.resolve([])),
-    [isMentorApprover]
-  )
-  const { data: pendingFacility } = useLiveData(
-    () => (isFacilityAdmin ? listFacilityRequests({ status: 'pending_facility' }) : Promise.resolve([])),
-    [isFacilityAdmin]
-  )
-
-  const facilityName = (id) => facilities?.find((f) => f.id === id)?.name ?? id
-  const nameOf = (id) => profiles?.find((p) => p.id === id)?.name ?? 'Someone'
-
-  // Faculty only see requests where they're the chosen mentor; admin sees every one, as oversight.
-  const myMentorQueue = (pendingMentor ?? []).filter((r) => user.role === ROLES.ADMIN || r.mentorId === user.id)
+  const tabs = [
+    { id: 'browse', label: 'Browse & request' },
+    { id: 'schedule', label: 'Schedule' },
+    { id: 'approvals', label: 'Approvals', count: pendingForMe },
+    { id: 'mine', label: 'My requests', count: openMine },
+  ]
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-extrabold text-slate-900">Innovation facilities</h1>
-        <p className="text-sm text-slate-500">
-          HPC, 3D printers and more — what they do, where they are, and how to request access.
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-600">Campus facilities</p>
+        <h1 className="mt-1 text-2xl font-extrabold text-slate-900">Facilities</h1>
+        <p className="mt-1 max-w-2xl text-sm text-slate-500">
+          HPC, 3D printing, VR and electronics labs.{' '}
+          {NEEDS_FACULTY_ENDORSEMENT.has(user.role)
+            ? 'Your request is endorsed by a faculty mentor, then allocated by the lab team.'
+            : 'Your request goes straight to the lab team for allocation.'}
         </p>
       </div>
 
-      {loading ? (
-        <Spinner />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {facilities.map((f) => (
-            <FacilityCard key={f.id} facility={f} />
-          ))}
-        </div>
-      )}
-
-      {isMentorApprover && (
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-slate-800">Faculty approval pending (requests needing your sign-off)</h2>
-          {myMentorQueue.length === 0 ? (
-            <EmptyState icon="✅" title="Nothing waiting on you" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {myMentorQueue.map((r) => (
-                <FacilityRequestRow
-                  key={r.id}
-                  request={r}
-                  facilityName={facilityName(r.facilityId)}
-                  requesterName={nameOf(r.requestedBy)}
-                  onDecide={(decision, reason) => decideMentorStage(r.id, { decision, byUserId: user.id, reason })}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {isFacilityAdmin && (
-        <section>
-          <h2 className="mb-2 text-sm font-bold text-slate-800">Facility admin review</h2>
-          {!pendingFacility || pendingFacility.length === 0 ? (
-            <EmptyState icon="🔧" title="Nothing waiting on review" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {pendingFacility.map((r) => (
-                <FacilityAdminReviewRow
-                  key={r.id}
-                  request={r}
-                  facilityName={facilityName(r.facilityId)}
-                  requesterName={nameOf(r.requestedBy)}
-                  byUserId={user.id}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-2 text-sm font-bold text-slate-800">Your requests</h2>
-        {!myRequests || myRequests.length === 0 ? (
-          <EmptyState icon="🗓️" title="Nothing requested yet" />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {myRequests.map((r) => (
-              <MyRequestRow key={r.id} request={r} facilityName={facilityName(r.facilityId)} userId={user.id} />
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function MyRequestRow({ request: r, facilityName, userId }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-
-  async function respond(decision) {
-    setBusy(true)
-    setError(null)
-    try {
-      await respondToAlternative(r.id, { decision, byUserId: userId })
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="card p-3 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold text-slate-800">{facilityName}</p>
-          <p className="text-xs text-slate-500">
-            {r.date} · {formatTimeRange(r.start, r.end)}
-            {r.nodeHoursRequested ? ` · ${r.nodeHoursRequested} node-hours` : ''} · {r.purpose}
-          </p>
-          {r.status === 'declined' && (r.facilityReason || r.mentorReason) && (
-            <p className="mt-1 text-xs text-rose-600">Reason: {r.facilityReason || r.mentorReason}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge tone={STATUS_TONE[r.status]}>{FACILITY_REQUEST_STATUS_LABELS[r.status]}</Badge>
-          {r.status === 'pending_mentor' && (
-            <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => cancelFacilityRequest(r.id)}>
-              Cancel
-            </button>
-          )}
-        </div>
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition ${
+              tab === t.id
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {t.label}
+            {t.count > 0 && (
+              <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{t.count}</span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {r.status === 'alternative_suggested' && (
-        <div className="mt-2 rounded-lg bg-violet-50 p-2 ring-1 ring-inset ring-violet-200">
-          <p className="text-xs font-semibold text-violet-800">
-            Facility admin suggested: {r.altDate} · {formatTimeRange(r.altStart, r.altEnd)}
-          </p>
-          {r.altNote && <p className="mt-1 text-xs text-violet-700">{r.altNote}</p>}
-          <ErrorNote error={error} />
-          <div className="mt-2 flex gap-2">
-            <button className="btn-primary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => respond('accept')}>
-              Accept
-            </button>
-            <button className="btn-secondary !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => respond('decline')}>
-              Decline
-            </button>
+      {tab === 'browse' &&
+        (loading ? (
+          <Spinner />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(facilities ?? []).map((f) => (
+              <FacilityCard key={f.id} facility={f} />
+            ))}
           </div>
-        </div>
+        ))}
+
+      {tab === 'schedule' && <FacilityScheduleBoard />}
+      {tab === 'approvals' && <FacilityApprovals />}
+      {tab === 'mine' && <MyFacilityRequests />}
+
+      {!CAN_REQUEST_FACILITY.has(user.role) && tab === 'browse' && (
+        <p className="text-xs text-slate-400">Your role can view facilities but not raise access requests.</p>
       )}
     </div>
   )

@@ -1,9 +1,16 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { CAN_REQUEST_FACILITY, NEEDS_FACILITY_MENTOR } from '../../lib/constants'
+import { useLiveData } from '../../lib/useLiveData'
+import { getFacilitySchedule } from '../../lib/dataClient'
+import { todayISO, formatTimeRange } from '../../lib/time'
+import {
+  CAN_REQUEST_FACILITY,
+  NEEDS_FACULTY_ENDORSEMENT,
+  ROLES,
+} from '../../lib/constants'
 import Badge from '../../components/common/Badge'
 import ReportIssueModal from '../../components/common/ReportIssueModal'
-import RequestAccessModal from './RequestAccessModal'
+import RequestFacilityModal from './RequestFacilityModal'
 
 export default function FacilityCard({ facility }) {
   const { user } = useAuth()
@@ -11,6 +18,15 @@ export default function FacilityCard({ facility }) {
   const [issueOpen, setIssueOpen] = useState(false)
 
   const canRequest = CAN_REQUEST_FACILITY.has(user.role)
+  const needsMentor = NEEDS_FACULTY_ENDORSEMENT.has(user.role)
+
+  // Today at a glance, so the card itself shows whether the lab is free.
+  const { data: schedule } = useLiveData(
+    () => getFacilitySchedule({ facilityId: facility.id, date: todayISO() }),
+    [facility.id]
+  )
+  const today = schedule?.[0]
+  const sessions = today?.sessions ?? []
 
   return (
     <div className="card flex flex-col gap-3 p-5">
@@ -22,15 +38,35 @@ export default function FacilityCard({ facility }) {
             <p className="text-xs text-slate-400">{facility.location}</p>
           </div>
         </div>
-        {facility.underMaintenance && <Badge tone="red">Under maintenance</Badge>}
+        {facility.underMaintenance ? (
+          <Badge tone="red">Under maintenance</Badge>
+        ) : (
+          <Badge tone={sessions.length === 0 ? 'green' : 'amber'}>
+            {sessions.length === 0 ? 'Free today' : `${sessions.length} booked today`}
+          </Badge>
+        )}
       </div>
 
       <p className="text-sm text-slate-600">{facility.description}</p>
-      <p className="text-xs text-slate-400">Contact: {facility.contact}</p>
+
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+        <p>
+          Staffed {facility.openTime ?? '09:00'}–{facility.closeTime ?? '17:00'} · Contact {facility.contact}
+        </p>
+        {sessions.length > 0 && (
+          <p className="mt-1 truncate text-slate-600">
+            Today: {sessions.map((s) => `${formatTimeRange(s.startTime, s.endTime)} ${s.userName}`).join(' · ')}
+          </p>
+        )}
+      </div>
 
       <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-3">
         {canRequest && (
-          <button className="btn-primary flex-1" disabled={facility.underMaintenance} onClick={() => setRequestOpen(true)}>
+          <button
+            className="btn-primary flex-1"
+            disabled={facility.underMaintenance}
+            onClick={() => setRequestOpen(true)}
+          >
             Request access
           </button>
         )}
@@ -40,13 +76,19 @@ export default function FacilityCard({ facility }) {
       </div>
 
       <p className="text-[11px] text-slate-400">
-        {NEEDS_FACILITY_MENTOR.has(user.role)
-          ? "Needs your faculty mentor's approval, then the facility administrator's — no separate induction step."
-          : 'Goes straight to the facility administrator for review — no mentor step for your role.'}
+        {needsMentor
+          ? 'Goes to your faculty mentor first, then the lab team allocates the slot.'
+          : `Goes straight to the lab team — ${facility.requiresAdminApproval ? 'this lab needs Lab Administrator sign-off' : 'the Lab Assistant clears routine sessions'}.`}
       </p>
 
-      <RequestAccessModal open={requestOpen} onClose={() => setRequestOpen(false)} facility={facility} />
-      <ReportIssueModal open={issueOpen} onClose={() => setIssueOpen(false)} targetType="facility" targetId={facility.id} targetLabel={facility.name} />
+      <RequestFacilityModal open={requestOpen} onClose={() => setRequestOpen(false)} facility={facility} />
+      <ReportIssueModal
+        open={issueOpen}
+        onClose={() => setIssueOpen(false)}
+        targetType="facility"
+        targetId={facility.id}
+        targetLabel={facility.name}
+      />
     </div>
   )
 }

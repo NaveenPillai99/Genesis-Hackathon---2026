@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Soft background circle -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5f5"/>
+      <stop offset="100%" stop-color="#fed7aa"/>
+    </linearGradient>
+    <linearGradient id="haloGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#fef08a" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  
+  <circle cx="100" cy="100" r="98" fill="url(#bgGrad)"/>
+  <circle cx="100" cy="85" r="75" fill="url(#haloGrad)"/>
+
+  <!-- Torso & White Saree Fold -->
+  <path d="M30 200 C30 150, 60 135, 100 135 C140 135, 170 150, 170 200 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  <path d="M45 200 C50 160, 80 145, 100 145 C120 145, 150 160, 155 200 Z" fill="#f8fafc"/>
+  <!-- Saree Pallu across shoulder -->
+  <path d="M35 180 C50 140, 75 125, 100 130 C90 150, 85 175, 80 200 Z" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <path d="M120 130 C145 125, 165 145, 168 185 C155 160, 135 145, 120 130 Z" fill="#f1f5f9"/>
+
+  <!-- Neck -->
+  <path d="M86 115 C86 130, 114 130, 114 115 Z" fill="#d97746"/>
+
+  <!-- Face -->
+  <ellipse cx="100" cy="85" rx="36" ry="42" fill="#e08253"/>
+
+  <!-- Hair / Saree covering head -->
+  <path d="M60 85 C58 45, 142 45, 140 85 C145 105, 135 125, 130 120 C125 70, 75 70, 70 120 C65 125, 55 105, 60 85 Z" fill="#292524"/>
+  <path d="M56 80 C54 40, 146 40, 144 80 C150 65, 140 35, 100 35 C60 35, 50 65, 56 80 Z" fill="#ffffff" opacity="0.9"/>
+  <!-- White Saree Head Covering Drape -->
+  <path d="M54 85 C52 42, 148 42, 146 85 C149 105, 142 135, 136 145 C142 110, 140 55, 100 55 C60 55, 58 110, 64 145 C58 135, 51 105, 54 85 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- Eyes - warm and smiling -->
+  <path d="M78 82 Q86 76 92 82" fill="none" stroke="#1c1917" stroke-width="3" stroke-linecap="round"/>
+  <path d="M108 82 Q114 76 122 82" fill="none" stroke="#1c1917" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Eyebrows -->
+  <path d="M76 76 Q85 70 93 76" fill="none" stroke="#292524" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M107 76 Q115 70 124 76" fill="none" stroke="#292524" stroke-width="2.2" stroke-linecap="round"/>
+
+  <!-- Sacred Bindi / Tilak -->
+  <ellipse cx="100" cy="72" rx="4.5" ry="4.5" fill="#dc2626"/>
+  <ellipse cx="100" cy="65" rx="3.5" ry="1.8" fill="#fef08a"/>
+
+  <!-- Nose -->
+  <path d="M98 80 L97 92 Q100 95 103 92" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Warm, gentle smile -->
+  <path d="M86 102 Q100 114 114 102" fill="none" stroke="#991b1b" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M88 102 Q100 109 112 102" fill="#ffffff"/>
+
+  <!-- Cheeks glow -->
+  <circle cx="78" cy="94" r="7" fill="#ea580c" opacity="0.25"/>
+  <circle cx="122" cy="94" r="7" fill="#ea580c" opacity="0.25"/>
+
+  <!-- Traditional nose ornament stud -->
+  <circle cx="94" cy="92" r="1.5" fill="#fef08a"/>
+</svg>

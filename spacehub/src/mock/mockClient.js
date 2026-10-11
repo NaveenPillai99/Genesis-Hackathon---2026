@@ -15,13 +15,17 @@ import {
   DAY_SLOTS,
   CHECK_IN_GRACE_MINUTES,
   EVENT_STATUS,
+  FACILITY_BOOKING_STATUS,
   FACILITY_REQUEST_STATUS,
+  HPC_STATUS,
   LOST_ITEM_STATUS,
   MAINTENANCE_STATUS,
-  NEEDS_FACILITY_MENTOR,
+  ROLES,
   ROOM_TYPES,
+  WAITLIST_STATUS,
   WEEKLY_HOUR_CAP,
 } from '../lib/constants'
+import { planRequestRoute } from '../lib/facilityRouting'
 import {
   toMinutes,
   overlaps,
@@ -39,7 +43,12 @@ import {
   COURSE_LEGEND,
 } from './seedData'
 
-const STORAGE_KEY = 'spacehub_db_v1'
+// Bumped to v2 when facility access requests landed: facilities gained lab
+// staff + policy thresholds, and a new facilityRequests collection appeared.
+// Browsers holding a v1 blob reseed cleanly instead of silently missing the
+// new fields.
+const STORAGE_KEY = 'spacehub_db_v2'
+const HPC_AUTO_APPROVE_THRESHOLD = 20 // node-hours; above this needs faculty approval
 const RECENT_BOOKER_WINDOW_DAYS = 3
 
 // ---------------------------------------------------------------- bootstrap
@@ -62,18 +71,643 @@ function buildSeedTimetableSlots() {
   })
 }
 
+export const SEED_EVENTS = [
+  {
+    id: 'evt-seed-1',
+    name: 'National AI & Robotics Symposium 2026',
+    title: 'National AI & Robotics Symposium 2026',
+    description: 'Flagship inter-university symposium featuring IEEE keynote speakers, student robotics demonstrations, and research paper presentations across 14 universities.',
+    venueRoomId: 'venue-auditorium',
+    venue_id: 'venue-auditorium',
+    requestedBy: 'Dr Prema Nedungadi',
+    organizer: 'Dr Prema Nedungadi',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-18',
+    event_date: '2026-10-18',
+    start: '09:00',
+    start_slot: '09:00',
+    end: '17:00',
+    end_slot: '17:00',
+    audienceSize: 850,
+    expected_audience: 850,
+    eventLevel: 'national',
+    event_level: 'national',
+    academic: true,
+    externalGuests: true,
+    status: 'awaiting_director_approval',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 88,
+    combined_priority_score: 88,
+    rawScore: 86.4,
+    scoreBreakdown: {
+      eventLevelFactor: 25,
+      academicBonus: 20,
+      audienceFit: 25,
+      leadTimeScore: 18,
+    },
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Dr Prema N (HOD CSE)',
+    department_reviewer_name: 'Dr Prema N (HOD CSE)',
+    departmentReviewNotes: 'Endorsed by CSE Department Council and Deanery. Significant NAAC & NIRF research impact.',
+    department_review_notes: 'Endorsed by CSE Department Council and Deanery. Significant NAAC & NIRF research impact.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-2',
+    name: 'International EV & Clean Mobility Research Summit',
+    title: 'International EV & Clean Mobility Research Summit',
+    description: 'Joint research forum with Automotive Research Association and international university partners.',
+    venueRoomId: 'venue-seminar-ab1',
+    venue_id: 'venue-seminar-ab1',
+    requestedBy: 'Prof. Shankar Nair',
+    organizer: 'Prof. Shankar Nair',
+    department: 'Deanery of Engineering',
+    date: '2026-10-20',
+    event_date: '2026-10-20',
+    start: '10:00',
+    start_slot: '10:00',
+    end: '16:30',
+    end_slot: '16:30',
+    audienceSize: 140,
+    expected_audience: 140,
+    eventLevel: 'international',
+    event_level: 'international',
+    academic: true,
+    externalGuests: true,
+    status: 'awaiting_director_approval',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 92,
+    combined_priority_score: 92,
+    rawScore: 91.5,
+    scoreBreakdown: {
+      eventLevelFactor: 30,
+      academicBonus: 20,
+      audienceFit: 24,
+      leadTimeScore: 18,
+    },
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Prof. Shankar Nair (Dean of Engineering)',
+    department_reviewer_name: 'Prof. Shankar Nair (Dean of Engineering)',
+    departmentReviewNotes: 'Flagship university research initiative with external delegates from 6 countries.',
+    department_review_notes: 'Flagship university research initiative with external delegates from 6 countries.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-3',
+    name: 'Intra-College Coding Marathon (ACM Chapter)',
+    title: 'Intra-College Coding Marathon (ACM Chapter)',
+    description: 'Annual student hackathon and algorithmic challenge for second and third year B.Tech students.',
+    venueRoomId: 'venue-seminar-ab1',
+    venue_id: 'venue-seminar-ab1',
+    requestedBy: 'Devika Nair (Student ACM Chair)',
+    organizer: 'Devika Nair (Student ACM Chair)',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-20',
+    event_date: '2026-10-20',
+    start: '09:30',
+    start_slot: '09:30',
+    end: '17:00',
+    end_slot: '17:00',
+    audienceSize: 80,
+    expected_audience: 80,
+    eventLevel: 'department',
+    event_level: 'department',
+    academic: false,
+    externalGuests: false,
+    status: 'pending',
+    priority: 0,
+    priorityLabel: 'Normal',
+    priorityScore: 42,
+    combined_priority_score: 42,
+    rawScore: 41.0,
+    scoreBreakdown: {
+      eventLevelFactor: 10,
+      academicBonus: 5,
+      audienceFit: 15,
+      leadTimeScore: 12,
+    },
+    departmentRecommendation: null,
+    department_recommendation: null,
+    departmentReviewerName: null,
+    department_reviewer_name: null,
+    departmentReviewNotes: null,
+    department_review_notes: null,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-4',
+    name: 'Faculty Quantum Computing & Cryptography Workshop',
+    title: 'Faculty Quantum Computing & Cryptography Workshop',
+    description: '3-day hands-on faculty development workshop on Qiskit and Post-Quantum Cryptography.',
+    venueRoomId: 'room-ab1-e104',
+    venue_id: 'room-ab1-e104',
+    requestedBy: 'Dr Thilaga M (Associate Professor)',
+    organizer: 'Dr Thilaga M (Associate Professor)',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-24',
+    event_date: '2026-10-24',
+    start: '09:00',
+    start_slot: '09:00',
+    end: '16:00',
+    end_slot: '16:00',
+    audienceSize: 45,
+    expected_audience: 45,
+    eventLevel: 'regional',
+    event_level: 'regional',
+    academic: true,
+    externalGuests: false,
+    status: 'pending',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 74,
+    combined_priority_score: 74,
+    rawScore: 72.0,
+    scoreBreakdown: {
+      eventLevelFactor: 20,
+      academicBonus: 20,
+      audienceFit: 18,
+      leadTimeScore: 16,
+    },
+    departmentRecommendation: null,
+    department_recommendation: null,
+    departmentReviewerName: null,
+    department_reviewer_name: null,
+    departmentReviewNotes: null,
+    department_review_notes: null,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-5',
+    name: 'Chancellor Amritavarsham Distinguished Keynote',
+    title: 'Chancellor Amritavarsham Distinguished Keynote',
+    description: 'Inaugural university keynote address by visiting Nobel Laureate in Computational Sciences.',
+    venueRoomId: 'venue-auditorium',
+    venue_id: 'venue-auditorium',
+    requestedBy: 'Office of the Vice Chancellor',
+    organizer: 'Office of the Vice Chancellor',
+    department: 'University Administration',
+    date: '2026-10-12',
+    event_date: '2026-10-12',
+    start: '10:00',
+    start_slot: '10:00',
+    end: '13:00',
+    end_slot: '13:00',
+    audienceSize: 1100,
+    expected_audience: 1100,
+    eventLevel: 'international',
+    event_level: 'international',
+    academic: true,
+    externalGuests: true,
+    status: 'approved',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 98,
+    combined_priority_score: 98,
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Campus Director',
+    department_reviewer_name: 'Campus Director',
+    departmentReviewNotes: 'Institutional keynote cleared with highest university priority.',
+    department_review_notes: 'Institutional keynote cleared with highest university priority.',
+    decidedBy: 'user-director-1',
+    decidedAt: new Date().toISOString(),
+    adminReason: 'Chancellor institutional keynote cleared by Campus Director.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+]
+
+export const SEED_CHANGE_REQUESTS = [
+  {
+    id: 'tt-req-001',
+    courseCode: '22CSC401',
+    courseName: 'Deep Learning',
+    classSection: 'Int. M.Sc Data Science, VII B',
+    requesterId: 'user-classrep-1',
+    requesterName: 'Devika Nair',
+    originalDay: 'Friday',
+    originalSlot: 'slot2',
+    originalRoomId: 'room-ab1-e104',
+    proposedDay: 'Thursday',
+    proposedSlot: 'slot4',
+    proposedRoomId: 'room-ab1-e104',
+    proposedDate: '2026-10-15',
+    reason: 'Students participating in Inter-University Hackathon on Friday morning. Requesting reschedule to Thursday Slot 4.',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'tt-req-002',
+    courseCode: '22CSC404',
+    courseName: 'Data Security',
+    classSection: 'Int. M.Sc Data Science, VII B',
+    requesterId: 'user-classrep-1',
+    requesterName: 'Devika Nair',
+    originalDay: 'Thursday',
+    originalSlot: 'slot8',
+    originalRoomId: 'room-ab1-e103b',
+    proposedDay: 'Tuesday',
+    proposedSlot: 'slot2',
+    proposedRoomId: 'room-ab1-e103b',
+    proposedDate: '2026-10-22',
+    reason: 'Guest lecture by Industry Cyber Defense Specialist scheduled during Tuesday morning slot.',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  },
+]
+/**
+ * A few facility access requests spread across the workflow so the schedule,
+ * the approval queues and the status tracker all have content on first load.
+ * Dates are relative to "today" so the demo never looks stale.
+ */
+function seedFacilityRequests() {
+  const d = (offset) => {
+    const base = new Date()
+    base.setDate(base.getDate() + offset)
+    return toISODateLocal(base)
+  }
+  const now = new Date().toISOString()
+
+  return [
+    // Already allocated — fills the schedule board.
+    {
+      id: 'freq-seed-1',
+      facilityId: 'fac-3dprint',
+      requesterId: 'user-student-2',
+      requesterName: 'Diya Krishnan',
+      requesterRole: 'student',
+      date: d(0),
+      startTime: '10:00',
+      endTime: '12:00',
+      durationMinutes: 120,
+      reason: 'Printing the chassis for our capstone rover prototype.',
+      location: 'Innovation Lab bench 3',
+      nodeHours: null,
+      level: 'routine',
+      levelReasons: [],
+      mentorId: 'user-faculty-1',
+      mentorName: 'Dr Thilaga M',
+      mentorDecision: 'approved',
+      mentorDecidedAt: now,
+      mentorNote: 'Part of her capstone scope — endorsed.',
+      reviewerId: 'user-labassist-2',
+      reviewerRole: 'lab_assistant',
+      reviewerName: 'Ms Kavipriya',
+      labDecision: 'approved',
+      labDecidedAt: now,
+      labNote: 'Printer 2 reserved and filament loaded.',
+      status: 'approved',
+      createdAt: now,
+    },
+    // Waiting on the Lab Administrator (elevated: hazardous bench).
+    {
+      id: 'freq-seed-2',
+      facilityId: 'fac-electronics',
+      requesterId: 'user-student-1',
+      requesterName: 'Aarav Menon',
+      requesterRole: 'student',
+      date: d(1),
+      startTime: '14:00',
+      endTime: '16:00',
+      durationMinutes: 120,
+      reason: 'Soldering the power regulation board for the robotics kit.',
+      location: 'AB2 Basement, soldering bay',
+      nodeHours: null,
+      level: 'elevated',
+      levelReasons: ['This facility is flagged high-value / hazardous — the Lab Administrator signs off on every booking.'],
+      mentorId: 'user-faculty-2',
+      mentorName: 'Dr Kavitha P',
+      mentorDecision: 'approved',
+      mentorDecidedAt: now,
+      mentorNote: 'Supervised project work, approved.',
+      reviewerId: 'user-labadmin-2',
+      reviewerRole: 'lab_admin',
+      reviewerName: 'Dr Nikhil Joseph',
+      labDecision: null,
+      status: 'pending_lab',
+      createdAt: now,
+    },
+    // Waiting on faculty endorsement — first stop for a student request.
+    {
+      id: 'freq-seed-3',
+      facilityId: 'fac-hpc',
+      requesterId: 'user-student-2',
+      requesterName: 'Diya Krishnan',
+      requesterRole: 'student',
+      date: d(2),
+      startTime: '09:00',
+      endTime: '13:00',
+      durationMinutes: 240,
+      reason: 'Fine-tuning the thesis model on the GPU partition.',
+      location: 'Remote (SSH session)',
+      nodeHours: 32,
+      level: 'elevated',
+      levelReasons: ['32 node-hours requested, over the 20 node-hour assistant limit.'],
+      mentorId: 'user-faculty-1',
+      mentorName: 'Dr Thilaga M',
+      mentorDecision: null,
+      reviewerId: 'user-labadmin-1',
+      reviewerRole: 'lab_admin',
+      reviewerName: 'Dr Anand Shenoy',
+      labDecision: null,
+      status: 'pending_faculty',
+      createdAt: now,
+    },
+    // A faculty request that skipped endorsement entirely.
+    {
+      id: 'freq-seed-4',
+      facilityId: 'fac-vr',
+      requesterId: 'user-faculty-2',
+      requesterName: 'Dr Kavitha P',
+      requesterRole: 'faculty',
+      date: d(0),
+      startTime: '14:00',
+      endTime: '15:30',
+      durationMinutes: 90,
+      reason: 'Immersive-computing demo for the accreditation visit.',
+      location: 'VR Lab, AB1',
+      nodeHours: null,
+      level: 'routine',
+      levelReasons: [],
+      mentorId: null,
+      mentorName: null,
+      mentorDecision: null,
+      reviewerId: 'user-labassist-2',
+      reviewerRole: 'lab_assistant',
+      reviewerName: 'Ms Kavipriya',
+      labDecision: null,
+      status: 'pending_lab',
+      createdAt: now,
+    },
+  ]
+}
+
+function toISODateLocal(dateObj) {
+  const y = dateObj.getFullYear()
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function freshDb() {
   return {
     profiles: SEED_PROFILES,
     rooms: SEED_ROOMS,
     timetableSlots: buildSeedTimetableSlots(),
+    timetableChangeRequests: [...SEED_CHANGE_REQUESTS],
     roomBookings: [],
+    roomWaitlist: [],
     blockedDates: [],
-    events: [],
+    events: [...SEED_EVENTS],
     facilities: SEED_FACILITIES.map((f) => ({ ...f, underMaintenance: false })),
-    facilityRequests: [],
-    lostItems: [],
+    facilityBookings: [],
+    facilityRequests: seedFacilityRequests(),
+    inductions: [],
+    hpcAllocations: [],
+    lostItems: [
+      {
+        id: 'lf-001',
+        reportType: 'found',
+        title: 'Casio Scientific Calculator FX-991CW',
+        category: 'electronics',
+        description: 'Black non-programmable calculator found on the 2nd row desk near the window.',
+        locationFound: 'AB1 E-104 (1st Floor)',
+        isClassroom: true,
+        roomId: 'room-ab1-e104',
+        foundDate: '2026-10-09',
+        foundTime: '09:40',
+        finderName: 'Aarav Menon',
+        finderId: 'user-student-1',
+        currentCustody: 'class_advisor',
+        storageLocation: 'Class Advisor Office (Mathematics Dept, AB1 Room 214)',
+        assignedHandlerName: 'Dr Devika',
+        assignedHandlerId: 'user-classadvisor-1',
+        routingReason: 'Classroom Timetable Match: Deep Learning (Int. M.Sc Data Science VII B). Auto-routed to Class Advisor Dr Devika.',
+        status: 'in_custody',
+        claims: [],
+        custodyLogs: [
+          {
+            id: 'log-1',
+            action: 'reported',
+            actorName: 'Aarav Menon',
+            fromCustodian: 'Finder',
+            toCustodian: 'Dr Devika',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        reportedAt: new Date().toISOString(),
+      },
+      {
+        id: 'lf-002',
+        reportType: 'found',
+        title: 'Navy Blue Campus Backpack (Wildcraft)',
+        category: 'bags',
+        description: 'Wildcraft navy blue backpack with a water bottle and notebooks inside.',
+        locationFound: 'AB2 Central Lawn benches',
+        isClassroom: false,
+        roomId: null,
+        foundDate: '2026-10-10',
+        foundTime: '13:20',
+        finderName: 'Aarav Menon',
+        finderId: 'user-student-1',
+        currentCustody: 'student_welfare',
+        storageLocation: 'Student Welfare Lost Property Locker #4',
+        assignedHandlerName: 'Ms Priya Balan',
+        assignedHandlerId: 'user-welfare-1',
+        routingReason: 'Outdoor Campus Area: Auto-routed to Student Welfare Office.',
+        status: 'claim_pending',
+        claims: [
+          {
+            id: 'claim-001',
+            claimantId: 'user-classrep-1',
+            claimantName: 'Devika Nair',
+            proofDescription: 'Contains Data Science notebooks with student name Devika N on page 1.',
+            contactPhone: '+91 98765 43210',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        custodyLogs: [
+          {
+            id: 'log-2',
+            action: 'claim_filed',
+            actorName: 'Ms Priya Balan',
+            fromCustodian: 'Student Welfare',
+            toCustodian: 'Student Welfare',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        reportedAt: new Date().toISOString(),
+      },
+    ],
+    notifications: [
+      {
+        id: 'notif-1',
+        recipientId: 'user-classrep-1',
+        title: 'Classroom Booking Confirmed',
+        message: 'Your reservation for AB1-E104 on Friday Slot 8 has been confirmed.',
+        category: 'booking',
+        link: '/classrooms',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'notif-2',
+        recipientId: 'user-classadvisor-1',
+        title: 'Action Required: Lost Item Auto-Routed',
+        message: 'A calculator found in AB1-E104 during your class slot was automatically routed to your custody.',
+        category: 'lost_found',
+        link: '/lost-found',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'notif-3',
+        recipientId: 'user-classadvisor-1',
+        title: 'Timetable Change Request Pending',
+        message: 'Class Rep Devika Nair requested to move Deep Learning from Friday Slot 2 to Thursday Slot 4.',
+        category: 'timetable',
+        link: '/academic-scheduling',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    auditLogs: [
+      {
+        id: 'aud-1',
+        actorId: 'user-sysadmin-1',
+        actorName: 'Prof. K. R. Ramakrishnan',
+        actorRole: 'sys_admin',
+        action: 'SYSTEM_BOOT',
+        entityType: 'SYSTEM',
+        entityId: 'ROOT',
+        details: 'CampusConnect Pilot Initialized',
+        timestamp: new Date().toISOString(),
+      },
+    ],
     maintenanceReports: [],
+    hpcNodes: [
+      {
+        id: 'node-gpu-01',
+        name: 'CCE-DGX-A100-01',
+        clusterId: 'cce-hpc-cluster',
+        status: 'busy',
+        cpuCores: 64,
+        memoryGb: 256,
+        gpuCount: 4,
+        gpuModel: 'NVIDIA A100 80GB',
+        cpuUtilizationPct: 78.2,
+        memoryUtilizationPct: 64.0,
+        gpuUtilizationPct: 92.5,
+        activeJobs: 2,
+        queuedJobs: 1,
+        totalNodeHoursServed: 2450.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Primary deep learning research node',
+      },
+      {
+        id: 'node-gpu-02',
+        name: 'CCE-DGX-A100-02',
+        clusterId: 'cce-hpc-cluster',
+        status: 'idle',
+        cpuCores: 64,
+        memoryGb: 256,
+        gpuCount: 4,
+        gpuModel: 'NVIDIA A100 80GB',
+        cpuUtilizationPct: 14.5,
+        memoryUtilizationPct: 22.0,
+        gpuUtilizationPct: 5.0,
+        activeJobs: 0,
+        queuedJobs: 0,
+        totalNodeHoursServed: 1890.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Available for student thesis jobs',
+      },
+      {
+        id: 'node-cpu-01',
+        name: 'CCE-EPYC-Compute-01',
+        clusterId: 'cce-hpc-cluster',
+        status: 'busy',
+        cpuCores: 128,
+        memoryGb: 512,
+        gpuCount: 0,
+        gpuModel: 'None',
+        cpuUtilizationPct: 88.4,
+        memoryUtilizationPct: 72.0,
+        gpuUtilizationPct: 0.0,
+        activeJobs: 4,
+        queuedJobs: 2,
+        totalNodeHoursServed: 5600.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Monte Carlo simulation partition',
+      },
+      {
+        id: 'node-cpu-02',
+        name: 'CCE-EPYC-Compute-02',
+        clusterId: 'cce-hpc-cluster',
+        status: 'maintenance',
+        cpuCores: 128,
+        memoryGb: 512,
+        gpuCount: 0,
+        gpuModel: 'None',
+        cpuUtilizationPct: 0.0,
+        memoryUtilizationPct: 0.0,
+        gpuUtilizationPct: 0.0,
+        activeJobs: 0,
+        queuedJobs: 0,
+        totalNodeHoursServed: 4100.0,
+        lastHeartbeat: new Date().toISOString(),
+        notes: 'Scheduled ECC RAM replacement by vendor support',
+      },
+    ],
+    hpcJobs: [
+      {
+        id: 'job-01',
+        allocationId: 'hpc-001',
+        userId: 'user-student-1',
+        userName: 'Aarav Menon',
+        jobName: 'ResNet-50 Distributed Pretraining',
+        nodeId: 'node-gpu-01',
+        status: 'running',
+        requestedNodes: 1,
+        gpuRequested: 2,
+        cpuHoursUsed: 14.2,
+        startedAt: new Date().toISOString(),
+      },
+      {
+        id: 'job-02',
+        allocationId: 'hpc-002',
+        userId: 'user-faculty-1',
+        userName: 'Dr Thilaga M',
+        jobName: 'Transformer Architecture Search',
+        nodeId: 'node-gpu-01',
+        status: 'running',
+        requestedNodes: 1,
+        gpuRequested: 2,
+        cpuHoursUsed: 32.0,
+        startedAt: new Date().toISOString(),
+      },
+    ],
+    hpcIncidents: [
+      {
+        id: 'inc-01',
+        nodeId: 'node-cpu-02',
+        incidentType: 'scheduled_maintenance',
+        severity: 'warning',
+        reportedBy: 'Dr Radhika N',
+        description: 'DIMM slot 4 ECC multi-bit error detected during routine diagnostic run. Replaced memory module pending burn-in validation.',
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      },
+    ],
   }
 }
 
@@ -85,7 +719,63 @@ function load() {
       save(db)
       return db
     }
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    // Synchronize SEED_PROFILES into parsed profiles to guarantee new accounts exist
+    if (parsed && Array.isArray(parsed.profiles)) {
+      let changed = false
+      for (const sp of SEED_PROFILES) {
+        const existingIdx = parsed.profiles.findIndex((p) => p.id === sp.id)
+        if (existingIdx === -1) {
+          parsed.profiles.push(sp)
+          changed = true
+        } else {
+          if (parsed.profiles[existingIdx].role !== sp.role) {
+            parsed.profiles[existingIdx] = { ...sp, ...parsed.profiles[existingIdx], role: sp.role }
+            changed = true
+          }
+        }
+      }
+      if (changed) {
+        save(parsed)
+      }
+    }
+    // Synchronize SEED_EVENTS so pending approvals, recommendations and clashes are immediately available
+    if (parsed) {
+      if (!Array.isArray(parsed.events) || parsed.events.length === 0) {
+        parsed.events = [...SEED_EVENTS]
+        save(parsed)
+      } else {
+        let evChanged = false
+        for (const se of SEED_EVENTS) {
+          if (!parsed.events.some((e) => e.id === se.id)) {
+            parsed.events.push(se)
+            evChanged = true
+          }
+        }
+        if (evChanged) {
+          save(parsed)
+        }
+      }
+    }
+    // Synchronize SEED_CHANGE_REQUESTS so timetable change proposals are immediately available
+    if (parsed) {
+      if (!Array.isArray(parsed.timetableChangeRequests) || parsed.timetableChangeRequests.length === 0) {
+        parsed.timetableChangeRequests = [...SEED_CHANGE_REQUESTS]
+        save(parsed)
+      } else {
+        let reqChanged = false
+        for (const sr of SEED_CHANGE_REQUESTS) {
+          if (!parsed.timetableChangeRequests.some((r) => r.id === sr.id)) {
+            parsed.timetableChangeRequests.push(sr)
+            reqChanged = true
+          }
+        }
+        if (reqChanged) {
+          save(parsed)
+        }
+      }
+    }
+    return parsed
   } catch (err) {
     console.error('spacehub: failed to load mock DB, reseeding', err)
     const db = freshDb()
@@ -105,6 +795,20 @@ function mutate(fn) {
   save(db)
   emitDataChanged()
   return result
+}
+
+export function resetDemoEvents() {
+  return mutate((d) => {
+    d.events = [...SEED_EVENTS]
+    return d.events
+  })
+}
+
+export function resetDemoChangeRequests() {
+  return mutate((d) => {
+    d.timetableChangeRequests = [...SEED_CHANGE_REQUESTS]
+    return d.timetableChangeRequests
+  })
 }
 
 export function resetMockDb() {
@@ -128,6 +832,8 @@ function sweepAutoRelease() {
     if (now > graceEnd) {
       b.status = BOOKING_STATUS.RELEASED
       b.releasedAt = now.toISOString()
+      // Nobody checked in — the slot goes to the next person queued for it.
+      promoteFromWaitlist(db, b.roomId, b.date, b.slotId, 'the holder never checked in')
       changed = true
     }
   }
@@ -213,7 +919,13 @@ export async function getAvailability({ date, roomIds } = {}) {
       }
       const booking = activeBookingsFor(room.id, date).find((b) => b.slotId === slot.id)
       if (booking) {
-        return { ...slot, status: booking.status === BOOKING_STATUS.CHECKED_IN ? 'checked_in' : 'booked', booking }
+        return {
+          ...slot,
+          status: booking.status === BOOKING_STATUS.CHECKED_IN ? 'checked_in' : 'booked',
+          booking,
+          // How many people are queued behind this booking (FCFS).
+          waitingCount: waitingFor(db, room.id, date, slot.id).length,
+        }
       }
       return { ...slot, status: 'free' }
     })
@@ -298,7 +1010,227 @@ export async function cancelRoomBooking(id) {
     if (!b) throw new Error('Booking not found.')
     b.status = BOOKING_STATUS.CANCELLED
     b.releasedAt = new Date().toISOString()
+    // Hand the freed slot to whoever is first in the queue.
+    promoteFromWaitlist(d, b.roomId, b.date, b.slotId, 'the previous booking was cancelled')
     return b
+  })
+}
+
+// ------------------------------------------------- classroom waitlist (FCFS)
+// When a slot is already taken, anyone else who can book may join a
+// first-come-first-served queue for it. The moment the holder cancels — or
+// their booking auto-releases for not checking in — the next person in line
+// is handed the slot automatically and notified.
+
+/** Hours this person already holds in the week containing `date`. */
+function weeklyBookedHoursSync(d, userId, date) {
+  const weekStart = weekStartISO(date)
+  const weekEnd = new Date(`${weekStart}T00:00:00`)
+  weekEnd.setDate(weekEnd.getDate() + 7)
+  const weekEndIso = toISODateLocal(weekEnd)
+  return (d.roomBookings ?? [])
+    .filter(
+      (b) =>
+        b.bookedBy === userId &&
+        b.status !== BOOKING_STATUS.CANCELLED &&
+        b.status !== BOOKING_STATUS.RELEASED &&
+        b.date >= weekStart &&
+        b.date < weekEndIso
+    )
+    .reduce((sum, b) => sum + durationHours(b.start, b.end), 0)
+}
+
+/** The live FCFS queue for one slot, oldest first. */
+function waitingFor(d, roomId, date, slotId) {
+  return (d.roomWaitlist ?? [])
+    .filter(
+      (w) =>
+        w.roomId === roomId &&
+        w.date === date &&
+        w.slotId === slotId &&
+        w.status === WAITLIST_STATUS.WAITING
+    )
+    .sort((a, b) => (a.joinedAt < b.joinedAt ? -1 : 1))
+}
+
+/**
+ * Give a freed slot to the first eligible person in the queue. Anyone whose
+ * weekly cap would be blown is skipped (and told why) rather than silently
+ * handed a booking that breaks policy — the slot falls through to the next.
+ * Returns the created booking, or null if nobody could take it.
+ */
+function promoteFromWaitlist(d, roomId, date, slotId, becauseText) {
+  const queue = waitingFor(d, roomId, date, slotId)
+  if (queue.length === 0) return null
+
+  // Don't promote into a room that's blocked or out of service.
+  const blocked = (d.blockedDates ?? []).some((b) => b.roomId === roomId && b.date === date)
+  const broken = (d.maintenanceReports ?? []).some(
+    (m) => m.targetType === 'room' && m.targetId === roomId && m.severity === 'serious' && m.status !== MAINTENANCE_STATUS.RESOLVED
+  )
+  if (blocked || broken) return null
+
+  // Someone else may already hold it again (e.g. two cancels racing).
+  const stillTaken = (d.roomBookings ?? []).some(
+    (b) =>
+      b.roomId === roomId &&
+      b.date === date &&
+      b.slotId === slotId &&
+      (b.status === BOOKING_STATUS.BOOKED || b.status === BOOKING_STATUS.CHECKED_IN)
+  )
+  if (stillTaken) return null
+
+  const slot = BOOKABLE_SLOTS.find((s) => s.id === slotId)
+  if (!slot) return null
+  const room = (d.rooms ?? []).find((r) => r.id === roomId)
+
+  for (const entry of queue) {
+    const cap = WEEKLY_HOUR_CAP[entry.userRole]
+    if (cap) {
+      const used = weeklyBookedHoursSync(d, entry.userId, date)
+      if (used + durationHours(slot.start, slot.end) > cap) {
+        entry.status = WAITLIST_STATUS.SKIPPED
+        entry.skippedReason = `Weekly ${cap}-hr cap reached, so the slot passed to the next person in line.`
+        notify(d, {
+          recipientId: entry.userId,
+          title: 'Queue skipped you',
+          message: `${room?.name ?? 'A room'} freed up on ${date}, but your weekly ${cap}-hr cap is full.`,
+          category: 'classroom',
+          link: '/classrooms',
+        })
+        continue
+      }
+    }
+
+    const booking = {
+      id: newId('bk'),
+      roomId,
+      date,
+      slotId,
+      start: slot.start,
+      end: slot.end,
+      bookedBy: entry.userId,
+      purpose: entry.purpose || 'Promoted from waitlist',
+      status: BOOKING_STATUS.BOOKED,
+      createdAt: new Date().toISOString(),
+      checkedInAt: null,
+      releasedAt: null,
+      fromWaitlistId: entry.id,
+    }
+    d.roomBookings.push(booking)
+
+    entry.status = WAITLIST_STATUS.PROMOTED
+    entry.promotedAt = new Date().toISOString()
+    entry.promotedBookingId = booking.id
+
+    notify(d, {
+      recipientId: entry.userId,
+      title: `${room?.name ?? 'Classroom'} is yours`,
+      message: `You were next in the queue and ${becauseText} — ${date}, ${slot.start}–${slot.end} is now booked in your name. Check in within ${CHECK_IN_GRACE_MINUTES} minutes of the start.`,
+      category: 'classroom',
+      link: '/classrooms',
+    })
+    audit(d, {
+      actorId: 'system',
+      actorName: 'SpaceHub',
+      action: 'classroom.waitlist.promote',
+      entity: room?.name ?? roomId,
+      detail: `${entry.userName} promoted for ${date} ${slot.start}-${slot.end}`,
+    })
+
+    // Everyone still waiting just moved up a place.
+    waitingFor(d, roomId, date, slotId).forEach((w, i) => {
+      notify(d, {
+        recipientId: w.userId,
+        title: 'You moved up the queue',
+        message: `You're now #${i + 1} for ${room?.name ?? 'the room'} on ${date}, ${slot.start}–${slot.end}.`,
+        category: 'classroom',
+        link: '/classrooms',
+      })
+    })
+
+    return booking
+  }
+
+  return null
+}
+
+/** Queue entries for a slot, with 1-based positions for display. */
+export async function listRoomWaitlist({ roomId, date, slotId }) {
+  return waitingFor(db, roomId, date, slotId).map((w, i) => ({ ...w, position: i + 1 }))
+}
+
+/** Every queue this user is sitting in, plus what happened to past entries. */
+export async function listMyWaitlistEntries(userId) {
+  return (db.roomWaitlist ?? [])
+    .filter((w) => w.userId === userId)
+    .map((w) => {
+      const position =
+        w.status === WAITLIST_STATUS.WAITING
+          ? waitingFor(db, w.roomId, w.date, w.slotId).findIndex((x) => x.id === w.id) + 1
+          : null
+      return { ...w, position }
+    })
+    .sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1))
+}
+
+export async function joinRoomWaitlist({ roomId, date, slotId, userId, userRole, purpose }) {
+  const slot = BOOKABLE_SLOTS.find((s) => s.id === slotId)
+  if (!slot) throw new Error('Invalid time slot.')
+
+  const holder = activeBookingsFor(roomId, date).find((b) => b.slotId === slotId)
+  if (!holder) throw new Error('That slot is free right now — just book it.')
+  if (holder.bookedBy === userId) throw new Error('You already hold this slot.')
+
+  const already = waitingFor(db, roomId, date, slotId).some((w) => w.userId === userId)
+  if (already) throw new Error("You're already in the queue for this slot.")
+
+  const entry = {
+    id: newId('wl'),
+    roomId,
+    date,
+    slotId,
+    start: slot.start,
+    end: slot.end,
+    userId,
+    userName: profileName(userId),
+    userRole,
+    purpose: purpose?.trim() || '',
+    status: WAITLIST_STATUS.WAITING,
+    joinedAt: new Date().toISOString(),
+    promotedAt: null,
+    promotedBookingId: null,
+  }
+
+  return mutate((d) => {
+    if (!d.roomWaitlist) d.roomWaitlist = []
+    d.roomWaitlist.push(entry)
+    const room = d.rooms.find((r) => r.id === roomId)
+    audit(d, {
+      actorId: userId,
+      actorName: entry.userName,
+      action: 'classroom.waitlist.join',
+      entity: room?.name ?? roomId,
+      detail: `${date} ${slot.start}-${slot.end}, position ${waitingFor(d, roomId, date, slotId).length}`,
+    })
+    return { ...entry, position: waitingFor(d, roomId, date, slotId).length }
+  })
+}
+
+export async function leaveRoomWaitlist(id, { byUserId } = {}) {
+  return mutate((d) => {
+    const w = (d.roomWaitlist ?? []).find((x) => x.id === id)
+    if (!w) throw new Error('Queue entry not found.')
+    if (w.status !== WAITLIST_STATUS.WAITING) throw new Error('This queue entry is no longer active.')
+    w.status = WAITLIST_STATUS.CANCELLED
+    audit(d, {
+      actorId: byUserId ?? w.userId,
+      actorName: profileName(byUserId ?? w.userId),
+      action: 'classroom.waitlist.leave',
+      entity: w.roomId,
+      detail: `${w.date} ${w.start}-${w.end}`,
+    })
+    return w
   })
 }
 
@@ -346,6 +1278,22 @@ export async function blockRoomDate({ roomId, date, reason, byUserId }) {
         b.status = BOOKING_STATUS.CANCELLED
         b.releasedAt = new Date().toISOString()
       })
+    // The room is out of action for the day, so nobody can be promoted into
+    // it — close the queues instead of leaving people waiting for nothing.
+    const roomName = d.rooms.find((r) => r.id === roomId)?.name ?? roomId
+    ;(d.roomWaitlist ?? [])
+      .filter((w) => w.roomId === roomId && w.date === date && w.status === WAITLIST_STATUS.WAITING)
+      .forEach((w) => {
+        w.status = WAITLIST_STATUS.CANCELLED
+        w.skippedReason = `${roomName} was blocked for ${date}: ${block.reason}`
+        notify(d, {
+          recipientId: w.userId,
+          title: 'Queue closed',
+          message: `${roomName} is blocked on ${date} (${block.reason}), so your queue entry was closed.`,
+          category: 'classroom',
+          link: '/classrooms',
+        })
+      })
     return block
   })
 }
@@ -367,6 +1315,7 @@ export async function adminCancelBooking(id, reason) {
     b.status = BOOKING_STATUS.CANCELLED
     b.releasedAt = new Date().toISOString()
     b.adminOverrideReason = reason
+    promoteFromWaitlist(d, b.roomId, b.date, b.slotId, 'an admin released the booking')
     return b
   })
 }
@@ -390,197 +1339,589 @@ export async function setFacilityMaintenance(id, underMaintenance) {
   })
 }
 
-// ------------------------------------------------------- facility requests
-// No induction system — access is granted per request instead.
-// Submitted -> [Faculty Approval Pending ->] Facility Admin Review ->
-// Approved / Rejected / Alternative Suggested. Students/class reps need
-// their faculty mentor's sign-off first; faculty/admin requests go straight
-// to the facility administrator (see NEEDS_FACILITY_MENTOR). Mirrors the
-// event-request pattern: a request is a hold, not a grant, until fully
-// approved; only approved requests are mutually exclusive on time.
+export async function hasInduction(userId, facilityId) {
+  return db.inductions.some((i) => i.userId === userId && i.facilityId === facilityId)
+}
 
-export async function listFacilityRequests({ facilityId, mentorId, status } = {}) {
-  return db.facilityRequests.filter(
-    (r) =>
-      (!facilityId || r.facilityId === facilityId) &&
-      (!mentorId || r.mentorId === mentorId) &&
-      (!status || r.status === status)
+export async function listInductions({ userId, facilityId } = {}) {
+  return db.inductions.filter(
+    (i) => (!userId || i.userId === userId) && (!facilityId || i.facilityId === facilityId)
   )
 }
 
-export async function listMyFacilityRequests(userId) {
-  return db.facilityRequests
-    .filter((r) => r.requestedBy === userId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+export async function completeInduction({ userId, facilityId, byUserId }) {
+  const already = await hasInduction(userId, facilityId)
+  if (already) return db.inductions.find((i) => i.userId === userId && i.facilityId === facilityId)
+  return mutate((d) => {
+    const record = {
+      id: newId('ind'),
+      userId,
+      facilityId,
+      completedAt: new Date().toISOString(),
+      byUserId,
+    }
+    d.inductions.push(record)
+    return record
+  })
 }
 
-export async function requestFacilityAccess({
-  facilityId,
-  requestedBy,
-  requesterRole,
-  mentorId,
-  date,
-  start,
-  end,
-  durationMinutes,
-  nodeHoursRequested,
-  purpose,
-}) {
+export async function listFacilityBookings({ facilityId, date } = {}) {
+  return db.facilityBookings.filter(
+    (b) => (!facilityId || b.facilityId === facilityId) && (!date || b.date === date)
+  )
+}
+
+export async function listMyFacilityBookings(userId) {
+  return db.facilityBookings
+    .filter((b) => b.userId === userId)
+    .sort((a, b) => (a.date + a.start < b.date + b.start ? 1 : -1))
+}
+
+export async function createFacilityBooking({ facilityId, userId, date, start, end, purpose }) {
   const facility = db.facilities.find((f) => f.id === facilityId)
   if (!facility) throw new Error('Facility not found.')
   if (facility.underMaintenance) throw new Error('This facility is currently under maintenance.')
-  if (facility.allocationModel === 'compute_time' && !nodeHoursRequested) {
-    throw new Error('Specify how many node-hours you need.')
+  if (facility.inductionRequired) {
+    const inducted = await hasInduction(userId, facilityId)
+    if (!inducted) throw new Error('Complete the induction for this facility before booking it.')
   }
+  const clash = db.facilityBookings.some(
+    (b) =>
+      b.facilityId === facilityId &&
+      b.date === date &&
+      b.status === FACILITY_BOOKING_STATUS.BOOKED &&
+      overlaps(b.start, b.end, start, end)
+  )
+  if (clash) throw new Error('That time slot is already booked on this facility.')
 
-  const needsMentor = NEEDS_FACILITY_MENTOR.has(requesterRole)
-  if (needsMentor && !mentorId) throw new Error('Pick a faculty mentor to approve this request first.')
+  const booking = {
+    id: newId('fbk'),
+    facilityId,
+    userId,
+    date,
+    start,
+    end,
+    purpose: purpose?.trim() || 'Unspecified',
+    status: FACILITY_BOOKING_STATUS.BOOKED,
+    createdAt: new Date().toISOString(),
+  }
+  return mutate((d) => {
+    d.facilityBookings.push(booking)
+    return booking
+  })
+}
+
+export async function cancelFacilityBooking(id) {
+  return mutate((d) => {
+    const b = d.facilityBookings.find((x) => x.id === id)
+    if (!b) throw new Error('Booking not found.')
+    b.status = FACILITY_BOOKING_STATUS.CANCELLED
+    return b
+  })
+}
+
+// ------------------------------------------------- facility access requests
+// Submitted -> [Faculty endorsement ->] Lab review -> Approved / Rejected.
+// Students & class reps must name a faculty mentor who endorses first; staff
+// requests skip straight to the lab. Which lab person reviews depends on the
+// "level" of the request (routine -> Lab Assistant, elevated -> Lab
+// Administrator) — see src/lib/facilityRouting.js.
+
+function notify(d, { recipientId, title, message, category = 'facility', link = '/facilities' }) {
+  if (!recipientId) return
+  if (!d.notifications) d.notifications = []
+  d.notifications.push({
+    id: newId('notif'),
+    recipientId,
+    title,
+    message,
+    category,
+    link,
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  })
+}
+
+function audit(d, { actorId, actorName, action, entity, detail }) {
+  if (!d.auditLogs) d.auditLogs = []
+  d.auditLogs.push({
+    id: newId('audit'),
+    actorId,
+    actorName,
+    action,
+    entity,
+    detail,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+function profileName(id) {
+  return db.profiles.find((p) => p.id === id)?.name ?? 'Unknown'
+}
+
+/** Approved sessions that would collide with this window on the same facility. */
+function approvedClashes(facilityId, date, startTime, endTime, exceptId = null) {
+  return (db.facilityRequests ?? []).filter(
+    (r) =>
+      r.id !== exceptId &&
+      r.facilityId === facilityId &&
+      r.date === date &&
+      r.status === FACILITY_REQUEST_STATUS.APPROVED &&
+      overlaps(r.startTime, r.endTime, startTime, endTime)
+  )
+}
+
+export async function listFacilityRequests({ facilityId, requesterId, status, date } = {}) {
+  return (db.facilityRequests ?? [])
+    .filter(
+      (r) =>
+        (!facilityId || r.facilityId === facilityId) &&
+        (!requesterId || r.requesterId === requesterId) &&
+        (!status || r.status === status) &&
+        (!date || r.date === date)
+    )
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
+
+export async function listMyFacilityRequests(userId) {
+  return listFacilityRequests({ requesterId: userId })
+}
+
+/**
+ * The approval inbox for one person, split by which hat they're wearing:
+ *  - `endorsements`: student requests naming them as mentor
+ *  - `labReviews`:   requests routed to them as Lab Assistant / Lab Admin
+ * Resource/system admins see everything as an oversight override.
+ */
+export async function listFacilityApprovalQueue(user) {
+  if (!user) return { endorsements: [], labReviews: [] }
+  const all = db.facilityRequests ?? []
+  const isOversight =
+    user.role === ROLES.RESOURCE_ADMIN || user.role === ROLES.SYS_ADMIN || user.role === 'admin'
+
+  const endorsements = all.filter(
+    (r) =>
+      r.status === FACILITY_REQUEST_STATUS.PENDING_FACULTY &&
+      (isOversight || r.mentorId === user.id)
+  )
+
+  const labReviews = all.filter(
+    (r) =>
+      r.status === FACILITY_REQUEST_STATUS.PENDING_LAB &&
+      (isOversight || r.reviewerId === user.id)
+  )
+
+  return { endorsements, labReviews }
+}
+
+export async function createFacilityRequest({
+  facilityId,
+  requesterId,
+  requesterRole,
+  date,
+  startTime,
+  endTime,
+  reason,
+  location,
+  nodeHours,
+  mentorId,
+}) {
+  const facility = db.facilities.find((f) => f.id === facilityId)
+  if (!facility) throw new Error('Facility not found.')
+  if (facility.underMaintenance) throw new Error('This facility is under maintenance and is not accepting requests.')
+  if (!date || !startTime || !endTime) throw new Error('Pick a date, a start time and an end time.')
+  if (toMinutes(endTime) <= toMinutes(startTime)) throw new Error('The end time has to be after the start time.')
+  if (!reason?.trim()) throw new Error('Add a short reason so the approver knows what this is for.')
+
+  const route = planRequestRoute({
+    facility,
+    requesterRole,
+    date,
+    startTime,
+    endTime,
+    nodeHours: nodeHours ? Number(nodeHours) : null,
+  })
+
+  if (route.needsEndorsement && !mentorId) {
+    throw new Error('Pick the faculty member who should endorse this request first.')
+  }
+  if (!route.reviewerId) {
+    throw new Error('No lab staff are assigned to this facility yet — contact the resource admin.')
+  }
 
   const request = {
     id: newId('freq'),
     facilityId,
-    requestedBy,
-    mentorId: needsMentor ? mentorId : null,
+    requesterId,
+    requesterName: profileName(requesterId),
+    requesterRole,
     date,
-    start,
-    end,
-    durationMinutes,
-    nodeHoursRequested: nodeHoursRequested || null,
-    purpose: purpose?.trim() || 'Unspecified',
-    status: needsMentor ? FACILITY_REQUEST_STATUS.PENDING_MENTOR : FACILITY_REQUEST_STATUS.PENDING_FACILITY,
-    mentorDecidedBy: null,
+    startTime,
+    endTime,
+    durationMinutes: toMinutes(endTime) - toMinutes(startTime),
+    reason: reason.trim(),
+    location: location?.trim() || facility.location,
+    nodeHours: nodeHours ? Number(nodeHours) : null,
+    level: route.level,
+    levelReasons: route.levelReasons,
+    mentorId: route.needsEndorsement ? mentorId : null,
+    mentorName: route.needsEndorsement ? profileName(mentorId) : null,
+    mentorDecision: null,
     mentorDecidedAt: null,
-    mentorReason: null,
-    facilityDecidedBy: null,
-    facilityDecidedAt: null,
-    facilityReason: null,
+    mentorNote: null,
+    reviewerId: route.reviewerId,
+    reviewerRole: route.reviewerRole,
+    reviewerName: profileName(route.reviewerId),
+    labDecision: null,
+    labDecidedAt: null,
+    labNote: null,
     altDate: null,
-    altStart: null,
-    altEnd: null,
-    altNote: null,
+    altStartTime: null,
+    altEndTime: null,
+    status: route.needsEndorsement
+      ? FACILITY_REQUEST_STATUS.PENDING_FACULTY
+      : FACILITY_REQUEST_STATUS.PENDING_LAB,
     createdAt: new Date().toISOString(),
   }
+
   return mutate((d) => {
+    if (!d.facilityRequests) d.facilityRequests = []
     d.facilityRequests.push(request)
+
+    if (route.needsEndorsement) {
+      notify(d, {
+        recipientId: mentorId,
+        title: 'Facility request needs your endorsement',
+        message: `${request.requesterName} asked for ${facility.name} on ${date} (${startTime}–${endTime}).`,
+      })
+    } else {
+      notify(d, {
+        recipientId: route.reviewerId,
+        title: 'New facility request to review',
+        message: `${request.requesterName} asked for ${facility.name} on ${date} (${startTime}–${endTime}).`,
+      })
+    }
+
+    audit(d, {
+      actorId: requesterId,
+      actorName: request.requesterName,
+      action: 'facility.request.create',
+      entity: facility.name,
+      detail: `${route.level} request, routed to ${request.reviewerName}`,
+    })
     return request
   })
 }
 
-export async function decideMentorStage(id, { decision, byUserId, reason }) {
-  const request = db.facilityRequests.find((x) => x.id === id)
+/** Stage 1 — the named faculty mentor endorses or rejects. */
+export async function decideFacultyEndorsement(id, { decision, byUserId, note }) {
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
   if (!request) throw new Error('Request not found.')
-  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_MENTOR) {
-    throw new Error('This request already moved past the mentor stage.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_FACULTY) {
+    throw new Error('This request is not waiting on faculty endorsement.')
   }
+
   return mutate((d) => {
     const r = d.facilityRequests.find((x) => x.id === id)
-    r.mentorDecidedBy = byUserId
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
+    r.mentorDecision = decision
     r.mentorDecidedAt = new Date().toISOString()
-    r.mentorReason = reason?.trim() || null
-    r.status = decision === 'approved' ? FACILITY_REQUEST_STATUS.PENDING_FACILITY : FACILITY_REQUEST_STATUS.DECLINED
+    r.mentorNote = note?.trim() || null
+
+    if (decision === 'approved') {
+      r.status = FACILITY_REQUEST_STATUS.PENDING_LAB
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Endorsed request to review',
+        message: `${r.requesterName}'s ${facility?.name ?? 'facility'} request was endorsed by ${profileName(byUserId)} — now with you.`,
+      })
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Faculty endorsed your request',
+        message: `Now with ${r.reviewerName} (${r.reviewerRole === ROLES.LAB_ADMIN ? 'Lab Administrator' : 'Lab Assistant'}) for allocation.`,
+      })
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.REJECTED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility request rejected',
+        message: `${profileName(byUserId)} did not endorse your ${facility?.name ?? 'facility'} request.${note ? ` Reason: ${note}` : ''}`,
+      })
+    }
+
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.endorsement.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `Request by ${r.requesterName}`,
+    })
     return r
   })
 }
 
-function hasApprovedClash(requestId, facilityId, date, start, end) {
-  return db.facilityRequests.some(
-    (r) =>
-      r.id !== requestId &&
-      r.facilityId === facilityId &&
-      r.date === date &&
-      r.status === FACILITY_REQUEST_STATUS.APPROVED &&
-      overlaps(r.start, r.end, start, end)
-  )
-}
-
-/** Facility administrator's decision: approve at the requested time, reject outright, or propose a different slot. */
-export async function decideFacilityStage(id, { decision, byUserId, reason, altDate, altStart, altEnd, altNote }) {
-  const request = db.facilityRequests.find((x) => x.id === id)
+/**
+ * Stage 2 — lab staff decide against actual availability. They can approve,
+ * reject, or offer a different slot the requester then accepts or declines.
+ */
+export async function decideLabReview(id, { decision, byUserId, note, altDate, altStartTime, altEndTime }) {
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
   if (!request) throw new Error('Request not found.')
-  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_FACILITY) {
-    throw new Error('This request is not awaiting facility admin review.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_LAB) {
+    throw new Error('This request is not waiting on lab review.')
   }
-
-  const facility = db.facilities.find((f) => f.id === request.facilityId)
 
   if (decision === 'approved') {
-    if (facility?.underMaintenance) throw new Error('This facility is currently under maintenance.')
-    if (hasApprovedClash(id, request.facilityId, request.date, request.start, request.end)) {
-      throw new Error('Another approved request already covers this facility at an overlapping time.')
+    const clashes = approvedClashes(request.facilityId, request.date, request.startTime, request.endTime, id)
+    if (clashes.length) {
+      throw new Error(
+        `That slot is already allocated to ${clashes[0].requesterName} (${clashes[0].startTime}–${clashes[0].endTime}). Offer an alternative instead.`
+      )
     }
   }
+
   if (decision === 'alternative') {
-    if (!altDate || !altStart || !altEnd) throw new Error('Pick a date and time to suggest.')
-    if (hasApprovedClash(id, request.facilityId, altDate, altStart, altEnd)) {
-      throw new Error('That alternative slot is already taken too — pick another.')
+    if (!altDate || !altStartTime || !altEndTime) throw new Error('Pick the alternative date and time to offer.')
+    if (toMinutes(altEndTime) <= toMinutes(altStartTime)) throw new Error('The alternative end time has to be after its start.')
+    const clashes = approvedClashes(request.facilityId, altDate, altStartTime, altEndTime, id)
+    if (clashes.length) {
+      throw new Error(`That alternative is taken too (${clashes[0].requesterName}). Pick another slot.`)
     }
   }
 
   return mutate((d) => {
     const r = d.facilityRequests.find((x) => x.id === id)
-    r.facilityDecidedBy = byUserId
-    r.facilityDecidedAt = new Date().toISOString()
-    r.facilityReason = reason?.trim() || null
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
+    r.labDecision = decision
+    r.labDecidedAt = new Date().toISOString()
+    r.labNote = note?.trim() || null
+
     if (decision === 'approved') {
       r.status = FACILITY_REQUEST_STATUS.APPROVED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility slot allocated',
+        message: `${facility?.name ?? 'Facility'} is yours on ${r.date}, ${r.startTime}–${r.endTime}.`,
+      })
     } else if (decision === 'alternative') {
-      r.status = FACILITY_REQUEST_STATUS.ALTERNATIVE_SUGGESTED
+      r.status = FACILITY_REQUEST_STATUS.ALTERNATIVE_OFFERED
       r.altDate = altDate
-      r.altStart = altStart
-      r.altEnd = altEnd
-      r.altNote = altNote?.trim() || null
+      r.altStartTime = altStartTime
+      r.altEndTime = altEndTime
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Alternative slot offered',
+        message: `${facility?.name ?? 'Facility'} is busy then. Offered ${altDate}, ${altStartTime}–${altEndTime}.`,
+      })
     } else {
-      r.status = FACILITY_REQUEST_STATUS.DECLINED
+      r.status = FACILITY_REQUEST_STATUS.REJECTED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility request rejected',
+        message: `${facility?.name ?? 'Facility'} request was rejected.${note ? ` Reason: ${note}` : ''}`,
+      })
     }
+
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.lab.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `Request by ${r.requesterName} on ${r.date}`,
+    })
     return r
   })
 }
 
-/** Requester's response to a suggested alternative time. */
+/** The requester answers an offered alternative slot. */
 export async function respondToAlternative(id, { decision, byUserId }) {
-  const request = db.facilityRequests.find((x) => x.id === id)
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
   if (!request) throw new Error('Request not found.')
-  if (request.status !== FACILITY_REQUEST_STATUS.ALTERNATIVE_SUGGESTED) {
-    throw new Error('This request has no pending alternative to respond to.')
+  if (request.status !== FACILITY_REQUEST_STATUS.ALTERNATIVE_OFFERED) {
+    throw new Error('There is no alternative slot waiting on this request.')
   }
 
   if (decision === 'accept') {
-    const facility = db.facilities.find((f) => f.id === request.facilityId)
-    if (facility?.underMaintenance) throw new Error('This facility is currently under maintenance.')
-    if (hasApprovedClash(id, request.facilityId, request.altDate, request.altStart, request.altEnd)) {
-      throw new Error('That alternative slot was just taken by someone else — ask the facility admin for another.')
+    const clashes = approvedClashes(request.facilityId, request.altDate, request.altStartTime, request.altEndTime, id)
+    if (clashes.length) {
+      throw new Error('That alternative was just taken — ask the lab for another slot.')
     }
   }
 
   return mutate((d) => {
     const r = d.facilityRequests.find((x) => x.id === id)
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
     if (decision === 'accept') {
       r.date = r.altDate
-      r.start = r.altStart
-      r.end = r.altEnd
+      r.startTime = r.altStartTime
+      r.endTime = r.altEndTime
+      r.durationMinutes = toMinutes(r.endTime) - toMinutes(r.startTime)
       r.status = FACILITY_REQUEST_STATUS.APPROVED
-      r.facilityDecidedBy = byUserId
-      r.facilityDecidedAt = new Date().toISOString()
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Alternative slot accepted',
+        message: `${r.requesterName} accepted ${r.date}, ${r.startTime}–${r.endTime} on ${facility?.name ?? 'the facility'}.`,
+      })
     } else {
-      r.status = FACILITY_REQUEST_STATUS.DECLINED
-      r.facilityReason = r.facilityReason || 'Alternative time declined by requester'
+      r.status = FACILITY_REQUEST_STATUS.CANCELLED
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Alternative slot declined',
+        message: `${r.requesterName} declined the alternative for ${facility?.name ?? 'the facility'}.`,
+      })
     }
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.alternative.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `${r.date} ${r.startTime}-${r.endTime}`,
+    })
     return r
   })
 }
 
-export async function cancelFacilityRequest(id) {
+export async function cancelFacilityRequest(id, { byUserId } = {}) {
   return mutate((d) => {
-    const r = d.facilityRequests.find((x) => x.id === id)
+    const r = (d.facilityRequests ?? []).find((x) => x.id === id)
     if (!r) throw new Error('Request not found.')
     if (r.status === FACILITY_REQUEST_STATUS.APPROVED) {
-      throw new Error("This request's already been approved — contact the facility administrator to cancel it.")
+      throw new Error('This slot is already allocated — ask the lab staff to release it.')
     }
-    r.status = FACILITY_REQUEST_STATUS.DECLINED
-    r.facilityReason = r.facilityReason || 'Cancelled by requester'
+    r.status = FACILITY_REQUEST_STATUS.CANCELLED
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: 'facility.request.cancel',
+      entity: r.facilityId,
+      detail: `${r.date} ${r.startTime}-${r.endTime}`,
+    })
     return r
   })
 }
+
+/**
+ * Who is using a facility, when — the lab's day schedule. Merges allocated
+ * access requests with any legacy direct bookings so nothing is invisible,
+ * and reports the facility's staffed hours so the UI can draw the day.
+ */
+export async function getFacilitySchedule({ facilityId, date }) {
+  const facilities = facilityId
+    ? db.facilities.filter((f) => f.id === facilityId)
+    : [...db.facilities]
+
+  return facilities.map((facility) => {
+    const fromRequests = (db.facilityRequests ?? [])
+      .filter((r) => r.facilityId === facility.id && r.date === date && r.status === FACILITY_REQUEST_STATUS.APPROVED)
+      .map((r) => ({
+        id: r.id,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        userName: r.requesterName,
+        userId: r.requesterId,
+        reason: r.reason,
+        level: r.level,
+        source: 'request',
+      }))
+
+    // Legacy bookings made before the request workflow existed.
+    const fromBookings = (db.facilityBookings ?? [])
+      .filter(
+        (b) =>
+          b.facilityId === facility.id &&
+          b.date === date &&
+          b.status === FACILITY_BOOKING_STATUS.BOOKED &&
+          !b.requestId
+      )
+      .map((b) => ({
+        id: b.id,
+        startTime: b.start,
+        endTime: b.end,
+        userName: profileName(b.userId),
+        userId: b.userId,
+        reason: b.purpose,
+        level: 'routine',
+        source: 'booking',
+      }))
+
+    const sessions = [...fromRequests, ...fromBookings].sort(
+      (a, b) => toMinutes(a.startTime) - toMinutes(b.startTime)
+    )
+
+    const bookedMinutes = sessions.reduce(
+      (sum, s) => sum + (toMinutes(s.endTime) - toMinutes(s.startTime)),
+      0
+    )
+    const openTime = facility.openTime ?? '09:00'
+    const closeTime = facility.closeTime ?? '17:00'
+    const staffedMinutes = Math.max(1, toMinutes(closeTime) - toMinutes(openTime))
+
+    return {
+      facility,
+      date,
+      openTime,
+      closeTime,
+      sessions,
+      pendingCount: (db.facilityRequests ?? []).filter(
+        (r) =>
+          r.facilityId === facility.id &&
+          r.date === date &&
+          (r.status === FACILITY_REQUEST_STATUS.PENDING_FACULTY ||
+            r.status === FACILITY_REQUEST_STATUS.PENDING_LAB)
+      ).length,
+      utilizationPct: Math.min(100, Math.round((bookedMinutes / staffedMinutes) * 100)),
+    }
+  })
+}
+
+// ------------------------------------------------------------------- HPC
+
+export async function requestHpcAllocation({ studentId, facultyApproverId, nodeHoursRequested, purpose }) {
+  const isLarge = nodeHoursRequested > HPC_AUTO_APPROVE_THRESHOLD
+  const allocation = {
+    id: newId('hpc'),
+    studentId,
+    facultyApproverId: facultyApproverId || null,
+    nodeHoursRequested,
+    purpose: purpose?.trim() || 'Unspecified',
+    status: isLarge ? HPC_STATUS.PENDING : HPC_STATUS.APPROVED,
+    autoApproved: !isLarge,
+    createdAt: new Date().toISOString(),
+    decidedAt: isLarge ? null : new Date().toISOString(),
+  }
+  if (isLarge && !facultyApproverId) {
+    throw new Error(
+      `Requests over ${HPC_AUTO_APPROVE_THRESHOLD} node-hours need a faculty supervisor to approve them.`
+    )
+  }
+  return mutate((d) => {
+    d.hpcAllocations.push(allocation)
+    return allocation
+  })
+}
+
+export async function decideHpcAllocation(id, { decision, byUserId, reason }) {
+  return mutate((d) => {
+    const a = d.hpcAllocations.find((x) => x.id === id)
+    if (!a) throw new Error('Allocation request not found.')
+    a.status = decision
+    a.decidedAt = new Date().toISOString()
+    a.decidedBy = byUserId
+    a.decisionReason = reason
+    return a
+  })
+}
+
+export async function listHpcAllocations({ studentId, facultyApproverId, status } = {}) {
+  return db.hpcAllocations.filter(
+    (a) =>
+      (!studentId || a.studentId === studentId) &&
+      (!facultyApproverId || a.facultyApproverId === facultyApproverId) &&
+      (!status || a.status === status)
+  )
+}
+
+export const HPC_THRESHOLD = HPC_AUTO_APPROVE_THRESHOLD
 
 // ------------------------------------------------------------------ events
 
@@ -593,8 +1934,16 @@ function daysAheadFor(date) {
 export async function listEvents({ status } = {}) {
   return db.events
     .filter((e) => !status || e.status === status)
-    .sort((a, b) => (a.date + a.start < b.date + b.start ? -1 : 1))
+    .sort((a, b) => {
+      const prioA = a.priority !== undefined ? a.priority : (a.priorityScore >= 50 ? 1 : 0)
+      const prioB = b.priority !== undefined ? b.priority : (b.priorityScore >= 50 ? 1 : 0)
+      if (prioB !== prioA) return prioB - prioA
+      const timeA = new Date(a.createdAt || a.created_at || a.date || 0).getTime()
+      const timeB = new Date(b.createdAt || b.created_at || b.date || 0).getTime()
+      return timeA - timeB
+    })
 }
+
 
 export async function listPublicEvents() {
   return (await listEvents({ status: EVENT_STATUS.APPROVED })).map((e) => ({ ...e }))
@@ -646,7 +1995,7 @@ export async function createEventRequest({
 }) {
   const room = db.rooms.find((r) => r.id === venueRoomId)
   if (!room) throw new Error('Venue not found.')
-  const { score, breakdown } = computePriorityScore({
+  const { priority, priorityLabel, rawScore, sigmoidConfidence, score, breakdown } = computePriorityScore({
     eventLevel,
     academic,
     audienceSize,
@@ -668,6 +2017,10 @@ export async function createEventRequest({
     academic,
     externalGuests,
     status: EVENT_STATUS.PENDING,
+    priority,
+    priorityLabel,
+    rawScore,
+    sigmoidConfidence,
     priorityScore: score,
     scoreBreakdown: breakdown,
     createdAt: new Date().toISOString(),
@@ -710,7 +2063,7 @@ export async function createDirectEvent({
   )
   if (clash) throw new Error('Another event is already approved for this venue and time.')
 
-  const { score, breakdown } = computePriorityScore({
+  const { priority, priorityLabel, rawScore, sigmoidConfidence, score, breakdown } = computePriorityScore({
     eventLevel,
     academic,
     audienceSize,
@@ -733,6 +2086,10 @@ export async function createDirectEvent({
     academic,
     externalGuests,
     status: EVENT_STATUS.APPROVED,
+    priority,
+    priorityLabel,
+    rawScore,
+    sigmoidConfidence,
     priorityScore: score,
     scoreBreakdown: breakdown,
     createdAt: new Date().toISOString(),
@@ -772,15 +2129,144 @@ export async function decideEvent(id, { decision, reason, byUserId, overridden }
     const e = d.events.find((x) => x.id === id)
     e.status = decision
     e.adminReason = reason?.trim() || null
+    e.admin_reason = reason?.trim() || null
     e.decidedBy = byUserId
     e.decidedAt = new Date().toISOString()
     e.overridden = !!overridden
+    e.override_justification = overridden ? (reason?.trim() || null) : null
+
+    // Register institutional audit log
+    if (!d.auditLogs) d.auditLogs = []
+    d.auditLogs.unshift({
+      id: newId('aud'),
+      actorId: byUserId || 'user-director-1',
+      actorName: 'Campus Director',
+      actorRole: 'campus_director',
+      action: decision === EVENT_STATUS.APPROVED ? (overridden ? 'EVENT_APPROVED_WITH_OVERRIDE' : 'EVENT_APPROVED') : 'EVENT_REJECTED',
+      entityType: 'EVENT',
+      entityId: id,
+      details: `Campus Director marked '${e.name || e.title}' as ${decision.toUpperCase()}. Reason/Justification: ${reason || 'Standard Institutional Approval'}`,
+      timestamp: new Date().toISOString(),
+    })
+
+    return e
+  })
+}
+
+export async function recommendEvent(id, { recommendation, notes, byUserId, byUserName }) {
+  const event = db.events.find((e) => e.id === id)
+  if (!event) throw new Error('Event request not found.')
+
+  return mutate((d) => {
+    const e = d.events.find((x) => x.id === id)
+    e.departmentRecommendation = recommendation
+    e.department_recommendation = recommendation
+    e.departmentReviewerId = byUserId
+    e.departmentReviewerName = byUserName
+    e.department_reviewer_name = byUserName
+    e.departmentReviewNotes = notes
+    e.department_review_notes = notes
+    e.status = recommendation === 'RECOMMENDED' ? 'awaiting_director_approval' : recommendation.toLowerCase()
+
+    // Register departmental audit log
+    if (!d.auditLogs) d.auditLogs = []
+    d.auditLogs.unshift({
+      id: newId('aud'),
+      actorId: byUserId || 'user-hod-1',
+      actorName: byUserName || 'Department Reviewer',
+      actorRole: 'department_reviewer',
+      action: 'EVENT_RECOMMENDATION_SUBMITTED',
+      entityType: 'EVENT',
+      entityId: id,
+      details: `Official Department Recommendation (${recommendation}) recorded for '${e.name || e.title}'. Review Notes: ${notes || 'Endorsed for Director Sanction'}`,
+      timestamp: new Date().toISOString(),
+    })
+
     return e
   })
 }
 
 export async function listMyEvents(userId) {
   return db.events.filter((e) => e.requestedBy === userId)
+}
+
+export async function selectEventAlternative(eventId, { selected_venue_id, selected_date, selected_start_slot, selected_end_slot, notes }) {
+  const evt = db.events.find((e) => e.id === eventId)
+  if (!evt) throw new Error('Event not found.')
+  return mutate((d) => {
+    const e = d.events.find((x) => x.id === eventId)
+    e.venueRoomId = selected_venue_id
+    e.date = selected_date
+    e.start = selected_start_slot || e.start
+    e.end = selected_end_slot || e.end
+    e.status = 'ALTERNATIVE_SELECTED'
+    e.selectedAlternative = { selected_venue_id, selected_date, notes }
+    return e
+  })
+}
+
+export async function autoDecideCluster({ venueRoomId, date }) {
+  const pending = db.events.filter(
+    (e) => (e.venueRoomId === venueRoomId || e.venue_id === venueRoomId) &&
+           (e.date === date || e.event_date === date) &&
+           (e.status === EVENT_STATUS.PENDING || e.status === 'pending' || e.status === 'PENDING')
+  )
+  if (pending.length === 0) return { message: 'No pending requests in this cluster' }
+
+  pending.sort((a, b) => {
+    const scoreA = a.combined_priority_score ?? a.combinedPriorityScore ?? a.priorityScore ?? 0
+    const scoreB = b.combined_priority_score ?? b.combinedPriorityScore ?? b.priorityScore ?? 0
+    if (scoreB !== scoreA) return scoreB - scoreA
+    const timeA = new Date(a.createdAt || a.created_at || a.date || 0).getTime()
+    const timeB = new Date(b.createdAt || b.created_at || b.date || 0).getTime()
+    return timeA - timeB
+  })
+
+  const winner = pending[0]
+  const losers = pending.slice(1)
+
+  return mutate((d) => {
+    const w = d.events.find((x) => x.id === winner.id)
+    if (w) {
+      w.status = EVENT_STATUS.APPROVED
+      w.adminReason = `Autonomous Decision Engine: Automatically awarded and approved based on priority score P = ${winner.combined_priority_score || winner.priorityScore || 91}.`
+      w.decidedAt = new Date().toISOString()
+      w.decidedBy = 'ai_priority_engine'
+    }
+
+    for (const loser of losers) {
+      const l = d.events.find((x) => x.id === loser.id)
+      if (l) {
+        l.status = 'ALTERNATIVES_OFFERED'
+        l.adminReason = `Autonomous Engine: Preferred venue automatically allocated to higher-priority event '${winner.title || winner.name}'. Feasible alternative venues automatically generated.`
+        l.decidedAt = new Date().toISOString()
+        l.decidedBy = 'ai_priority_engine'
+
+        const alts = d.rooms
+          .filter((r) => r.type === ROOM_TYPES.EVENT_VENUE && r.id !== (l.venueRoomId || l.venue_id) && r.capacity >= (l.audienceSize || l.expected_audience || 50))
+          .slice(0, 3)
+          .map((r) => ({
+            venue_id: r.id,
+            venue_name: r.name,
+            building: r.building,
+            capacity: r.capacity,
+            suitability_score: Math.round(85 + Math.random() * 12),
+          }))
+
+        l.offered_alternatives = {
+          venues: alts,
+          auto_generated: true,
+          timestamp: new Date().toISOString(),
+        }
+      }
+    }
+
+    return {
+      winnerId: winner.id,
+      winnerTitle: winner.title || winner.name,
+      losersCount: losers.length,
+    }
+  })
 }
 
 // -------------------------------------------------------------- lost&found
@@ -947,13 +2433,8 @@ export async function getUtilizationStats() {
 
   const facilityUsage = db.facilities.map((f) => ({
     facility: f.name,
-    approved: db.facilityRequests.filter((r) => r.facilityId === f.id && r.status === FACILITY_REQUEST_STATUS.APPROVED).length,
-    pending: db.facilityRequests.filter(
-      (r) =>
-        r.facilityId === f.id &&
-        r.status !== FACILITY_REQUEST_STATUS.APPROVED &&
-        r.status !== FACILITY_REQUEST_STATUS.DECLINED
-    ).length,
+    bookings: db.facilityBookings.filter((b) => b.facilityId === f.id && b.status !== FACILITY_BOOKING_STATUS.CANCELLED).length,
+    inductions: db.inductions.filter((i) => i.facilityId === f.id).length,
   }))
 
   const openMaintenance = db.maintenanceReports.filter((m) => m.status !== MAINTENANCE_STATUS.RESOLVED).length
@@ -962,6 +2443,287 @@ export async function getUtilizationStats() {
   return { roomUtilization, eventCounts, facilityUsage, openMaintenance, unclaimedLostItems }
 }
 
-// ----------------------------------------------------------- misc exports
+// ------------------------------------------------ Academic Scheduling
+export async function listChangeRequests() {
+  return [...(db.timetableChangeRequests || [])].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
 
+export async function proposeChangeRequest(reqData) {
+  const newReq = {
+    id: newId('tt-req'),
+    ...reqData,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  }
+  return mutate((d) => {
+    if (!d.timetableChangeRequests) d.timetableChangeRequests = []
+    d.timetableChangeRequests.push(newReq)
+    if (!d.notifications) d.notifications = []
+    d.notifications.push({
+      id: newId('notif'),
+      recipientId: 'user-classadvisor-1',
+      title: 'Timetable Change Proposal',
+      message: `${reqData.requesterName} proposed moving ${reqData.courseName} to ${reqData.proposedDay} (${reqData.proposedSlot}).`,
+      category: 'timetable',
+      link: '/academic-scheduling',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    })
+    return newReq
+  })
+}
+
+export async function reviewChangeRequest(id, { decision, reviewNotes, approverName, approverId }) {
+  return mutate((d) => {
+    const req = (d.timetableChangeRequests || []).find((r) => r.id === id)
+    if (!req) throw new Error('Change request not found')
+    req.status = decision
+    req.approverName = approverName
+    req.approverId = approverId
+    req.reviewNotes = reviewNotes
+    req.updatedAt = new Date().toISOString()
+
+    if (decision === 'approved') {
+      const existingSlot = d.timetableSlots.find(
+        (s) => s.day === req.originalDay && s.slotId === req.originalSlot && s.code === req.courseCode
+      )
+      if (existingSlot) {
+        existingSlot.day = req.proposedDay
+        existingSlot.slotId = req.proposedSlot
+        existingSlot.roomId = req.proposedRoomId
+      }
+    }
+    return req
+  })
+}
+
+// ------------------------------------------------ Lost & Found Enhanced
+export async function reportSmartLostItem(itemData) {
+  let assignedHandlerName = 'Office of Student Welfare'
+  let assignedHandlerId = 'user-welfare-1'
+  let currentCustody = 'student_welfare'
+  let routingReason = 'Outdoor / Campus Common Area: Auto-routed to Student Welfare Office.'
+
+  if (itemData.isClassroom && itemData.roomId) {
+    const ttSlot = (db.timetableSlots || []).find(
+      (s) => s.roomId === itemData.roomId && s.slotId === itemData.slotId
+    )
+    if (ttSlot && ttSlot.faculty) {
+      assignedHandlerName = 'Dr Devika'
+      assignedHandlerId = 'user-classadvisor-1'
+      currentCustody = 'class_advisor'
+      routingReason = `Classroom Timetable Match (${ttSlot.courseName || 'Class'}). Automatically routed to Class Advisor Dr Devika.`
+    }
+  }
+
+  const item = {
+    id: newId('lf'),
+    ...itemData,
+    assignedHandlerName,
+    assignedHandlerId,
+    currentCustody,
+    routingReason,
+    status: 'reported',
+    claims: [],
+    custodyLogs: [
+      {
+        id: newId('log'),
+        action: 'reported',
+        actorName: itemData.finderName,
+        fromCustodian: 'Finder',
+        toCustodian: assignedHandlerName,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    reportedAt: new Date().toISOString(),
+  }
+
+  return mutate((d) => {
+    if (!d.lostItems) d.lostItems = []
+    d.lostItems.unshift(item)
+    return item
+  })
+}
+
+export async function submitClaim(itemId, claimData) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const newClaim = {
+      id: newId('claim'),
+      ...claimData,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    }
+    if (!item.claims) item.claims = []
+    item.claims.push(newClaim)
+    item.status = 'claim_pending'
+    return newClaim
+  })
+}
+
+export async function reviewClaim(itemId, claimId, { decision, handlerNotes }) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const claim = (item.claims || []).find((c) => c.id === claimId)
+    if (!claim) throw new Error('Claim not found')
+    claim.status = decision
+    claim.handlerNotes = handlerNotes
+    if (decision === 'rejected') item.status = 'in_custody'
+    return claim
+  })
+}
+
+export async function recordHandover(itemId, { newCustody, handoverNotes }) {
+  return mutate((d) => {
+    const item = d.lostItems.find((i) => i.id === itemId)
+    if (!item) throw new Error('Item not found')
+    const oldCustody = item.currentCustody
+    item.status = newCustody
+    item.currentCustody = newCustody
+    item.handoverNotes = handoverNotes
+    if (newCustody === 'returned') {
+      item.returnDate = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    }
+    if (!item.custodyLogs) item.custodyLogs = []
+    item.custodyLogs.push({
+      id: newId('log'),
+      action: newCustody,
+      actorName: 'Custodian',
+      fromCustodian: oldCustody,
+      toCustodian: newCustody,
+      notes: handoverNotes,
+      timestamp: new Date().toISOString(),
+    })
+    return item
+  })
+}
+
+// ------------------------------------------------ Notifications
+export async function listNotifications(userId) {
+  return (db.notifications || []).filter(
+    (n) => !userId || n.recipientId === userId || n.recipientId === 'all'
+  )
+}
+
+export async function markNotificationRead(id) {
+  return mutate((d) => {
+    const notif = (d.notifications || []).find((n) => n.id === id)
+    if (notif) notif.isRead = true
+    return notif
+  })
+}
+
+export async function markAllNotificationsRead(userId) {
+  return mutate((d) => {
+    (d.notifications || []).forEach((n) => {
+      if (!userId || n.recipientId === userId) n.isRead = true
+    })
+    return true
+  })
+}
+
+// ------------------------------------------------ Audit Logs
+export async function listAuditLogs() {
+  return [...(db.auditLogs || [])].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+}
+
+// ------------------------------------------------ E-Governance Spec
+export async function getEGovernanceSpec() {
+  return {
+    status: 'MOCK_INTEGRATION_MODE',
+    protocol: 'OpenID Connect (OIDC) / SAML 2.0',
+    issuer: 'https://auth.amrita.edu/realms/campus',
+    syncedRecords: 42,
+  }
+}
+
+export async function simulateEGovernanceSync() {
+  return {
+    status: 'SUCCESS',
+    synced_records: 42,
+    message: 'Simulated synchronization succeeded against synthetic university roster.',
+  }
+}
+
+// ------------------------------------------------ HPC Operations
+export async function getHpcOverview() {
+  const nodes = db.hpcNodes || []
+  const jobs = db.hpcJobs || []
+  const total = nodes.length
+  const working = nodes.filter((n) => n.status === 'idle' || n.status === 'busy').length
+  const idle = nodes.filter((n) => n.status === 'idle').length
+  const busy = nodes.filter((n) => n.status === 'busy').length
+  const offline = nodes.filter((n) => n.status === 'offline').length
+  const maintenance = nodes.filter((n) => n.status === 'maintenance').length
+  const activeJobs = jobs.filter((j) => j.status === 'running').length
+  const queuedJobs = jobs.filter((j) => j.status === 'queued').length
+  return {
+    cluster_id: 'cce-hpc-cluster',
+    cluster_name: 'Amrita Center for Computational Engineering HPC',
+    total_nodes: total,
+    working_nodes: working,
+    idle_nodes: idle,
+    busy_nodes: busy,
+    offline_nodes: offline,
+    maintenance_nodes: maintenance,
+    available_compute_capacity_pct: total > 0 ? (idle / total) * 100 : 0,
+    active_jobs: activeJobs,
+    queued_jobs: queuedJobs,
+    cpu_utilization_pct: 60.3,
+    memory_utilization_pct: 52.6,
+    gpu_utilization_pct: 48.7,
+    node_hours_consumed: 14040.0,
+    failed_jobs_24h: 0,
+    operational_alerts: 1,
+    telemetry_type: 'SYNTHETIC_DEMO_TELEMETRY',
+    telemetry_notice: 'DEMO DATA: Synthetic cluster telemetry for hackathon evaluation. Real SLURM / Prometheus exporter can be wired via REST collector.',
+    last_telemetry_sync: new Date().toISOString(),
+  }
+}
+
+export async function listHpcNodes() {
+  return [...(db.hpcNodes || [])]
+}
+
+export async function updateHpcNodeStatus(nodeId, { status, notes }) {
+  return mutate((d) => {
+    const node = (d.hpcNodes || []).find((n) => n.id === nodeId)
+    if (!node) throw new Error('HPC Node not found')
+    node.status = status
+    if (notes !== undefined) node.notes = notes
+    node.lastHeartbeat = new Date().toISOString()
+    return node
+  })
+}
+
+export async function listHpcJobs() {
+  return [...(db.hpcJobs || [])]
+}
+
+export async function listHpcIncidents() {
+  return [...(db.hpcIncidents || [])]
+}
+
+export async function createHpcIncident({ nodeId, incidentType, severity, description, reportedBy }) {
+  return mutate((d) => {
+    const inc = {
+      id: newId('inc'),
+      nodeId,
+      incidentType: incidentType || 'operational_fault',
+      severity: severity || 'warning',
+      description,
+      reportedBy: reportedBy || 'Dr Radhika N',
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    }
+    if (!d.hpcIncidents) d.hpcIncidents = []
+    d.hpcIncidents.unshift(inc)
+    return inc
+  })
+}
+
+// ----------------------------------------------------------- misc exports
 export { toMinutes }
+

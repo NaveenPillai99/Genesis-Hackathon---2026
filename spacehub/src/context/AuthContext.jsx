@@ -1,14 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { getProfile } from '../lib/dataClient'
+import { setToken, api } from '../lib/apiClient'
 
-// Pilot auth: "simple buttons for different types of users". The brief's
-// production plan reuses the existing Amrita login (Supabase Auth, or an SSO
-// token handed in by the MyAmrita app shell) and pulls the role from
-// existing records — see supabase/schema.sql's comment on `profiles`. For
-// the standalone pilot there's no real login system to hook into yet, so
-// picking a seeded demo account stands in for it.
-
-const STORAGE_KEY = 'spacehub_current_user_id'
+const STORAGE_KEY = 'campusconnect_current_user_id'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
@@ -39,20 +33,47 @@ export function AuthProvider({ children }) {
     }
   }, [userId])
 
-  function loginAs(profile) {
+  async function loginAs(profile) {
     localStorage.setItem(STORAGE_KEY, profile.id)
     setUserId(profile.id)
     setUser(profile)
+    // Synchronize JWT token from backend
+    try {
+      const res = await api.quickLogin(profile.id)
+      if (res.access_token) {
+        setToken(res.access_token)
+      }
+    } catch (e) {
+      console.warn('Backend quick-login sync skipped:', e)
+    }
+  }
+
+  async function loginWithCredentials(email, password) {
+    try {
+      const res = await api.login(email, password)
+      if (res.access_token) {
+        setToken(res.access_token)
+        localStorage.setItem(STORAGE_KEY, res.user.id)
+        setUserId(res.user.id)
+        setUser(res.user)
+        return res.user
+      }
+    } catch (err) {
+      throw err
+    }
   }
 
   function logout() {
     localStorage.removeItem(STORAGE_KEY)
+    setToken(null)
     setUserId(null)
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginAs, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, loginAs, loginWithCredentials, logout }}>
+      {children}
+    </AuthContext.Provider>
   )
 }
 

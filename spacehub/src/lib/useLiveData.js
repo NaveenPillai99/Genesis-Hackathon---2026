@@ -3,17 +3,18 @@ import { onDataChanged } from './bus'
 
 /**
  * Calls `fetcher()` on mount, whenever `deps` change, and whenever anything
- * in the app writes data (bookings, approvals, requests, ...). Works the
+ * in the app writes data (requests, approvals, bookings, ...). Works the
  * same against the mock backend or Supabase — see dataClient.js.
  *
- * `loading` is only true for the *first* fetch of a given query (mount, or
- * `deps` changing) — a background refetch triggered by some unrelated
- * mutation elsewhere in the app (the bus doesn't know which table changed)
- * updates `data` in place without toggling `loading` back on. That matters:
- * a page that does `{loading ? <Spinner/> : <RealContent/>}` would otherwise
- * unmount `<RealContent/>` for an instant on every single mutation anywhere
- * in the app, wiping any local state a child was holding — e.g. an open
- * modal closing itself mid-interaction the moment any other data changed.
+ * `loading` is true only for the *first* fetch of a given query (mount, or
+ * `deps` changing). A background refetch triggered by some unrelated write
+ * elsewhere — the change bus doesn't know which collection changed — swaps
+ * `data` in place without flipping `loading` back on.
+ *
+ * That matters: a page that renders `{loading ? <Spinner/> : <Content/>}`
+ * would otherwise unmount `<Content/>` for an instant on *every* write
+ * anywhere in the app, destroying any local state its children hold — an
+ * open modal would close itself mid-submit, a half-typed form would clear.
  */
 export function useLiveData(fetcher, deps = []) {
   const [data, setData] = useState(null)
