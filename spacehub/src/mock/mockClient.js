@@ -63,6 +63,220 @@ function buildSeedTimetableSlots() {
   })
 }
 
+export const SEED_EVENTS = [
+  {
+    id: 'evt-seed-1',
+    name: 'National AI & Robotics Symposium 2026',
+    title: 'National AI & Robotics Symposium 2026',
+    description: 'Flagship inter-university symposium featuring IEEE keynote speakers, student robotics demonstrations, and research paper presentations across 14 universities.',
+    venueRoomId: 'venue-auditorium',
+    venue_id: 'venue-auditorium',
+    requestedBy: 'Dr Prema Nedungadi',
+    organizer: 'Dr Prema Nedungadi',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-18',
+    event_date: '2026-10-18',
+    start: '09:00',
+    start_slot: '09:00',
+    end: '17:00',
+    end_slot: '17:00',
+    audienceSize: 850,
+    expected_audience: 850,
+    eventLevel: 'national',
+    event_level: 'national',
+    academic: true,
+    externalGuests: true,
+    status: 'awaiting_director_approval',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 88,
+    combined_priority_score: 88,
+    rawScore: 86.4,
+    scoreBreakdown: {
+      eventLevelFactor: 25,
+      academicBonus: 20,
+      audienceFit: 25,
+      leadTimeScore: 18,
+    },
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Dr Prema N (HOD CSE)',
+    department_reviewer_name: 'Dr Prema N (HOD CSE)',
+    departmentReviewNotes: 'Endorsed by CSE Department Council and Deanery. Significant NAAC & NIRF research impact.',
+    department_review_notes: 'Endorsed by CSE Department Council and Deanery. Significant NAAC & NIRF research impact.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-2',
+    name: 'International EV & Clean Mobility Research Summit',
+    title: 'International EV & Clean Mobility Research Summit',
+    description: 'Joint research forum with Automotive Research Association and international university partners.',
+    venueRoomId: 'venue-seminar-ab1',
+    venue_id: 'venue-seminar-ab1',
+    requestedBy: 'Prof. Shankar Nair',
+    organizer: 'Prof. Shankar Nair',
+    department: 'Deanery of Engineering',
+    date: '2026-10-20',
+    event_date: '2026-10-20',
+    start: '10:00',
+    start_slot: '10:00',
+    end: '16:30',
+    end_slot: '16:30',
+    audienceSize: 140,
+    expected_audience: 140,
+    eventLevel: 'international',
+    event_level: 'international',
+    academic: true,
+    externalGuests: true,
+    status: 'awaiting_director_approval',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 92,
+    combined_priority_score: 92,
+    rawScore: 91.5,
+    scoreBreakdown: {
+      eventLevelFactor: 30,
+      academicBonus: 20,
+      audienceFit: 24,
+      leadTimeScore: 18,
+    },
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Prof. Shankar Nair (Dean of Engineering)',
+    department_reviewer_name: 'Prof. Shankar Nair (Dean of Engineering)',
+    departmentReviewNotes: 'Flagship university research initiative with external delegates from 6 countries.',
+    department_review_notes: 'Flagship university research initiative with external delegates from 6 countries.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-3',
+    name: 'Intra-College Coding Marathon (ACM Chapter)',
+    title: 'Intra-College Coding Marathon (ACM Chapter)',
+    description: 'Annual student hackathon and algorithmic challenge for second and third year B.Tech students.',
+    venueRoomId: 'venue-seminar-ab1',
+    venue_id: 'venue-seminar-ab1',
+    requestedBy: 'Devika Nair (Student ACM Chair)',
+    organizer: 'Devika Nair (Student ACM Chair)',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-20',
+    event_date: '2026-10-20',
+    start: '09:30',
+    start_slot: '09:30',
+    end: '17:00',
+    end_slot: '17:00',
+    audienceSize: 80,
+    expected_audience: 80,
+    eventLevel: 'department',
+    event_level: 'department',
+    academic: false,
+    externalGuests: false,
+    status: 'pending',
+    priority: 0,
+    priorityLabel: 'Normal',
+    priorityScore: 42,
+    combined_priority_score: 42,
+    rawScore: 41.0,
+    scoreBreakdown: {
+      eventLevelFactor: 10,
+      academicBonus: 5,
+      audienceFit: 15,
+      leadTimeScore: 12,
+    },
+    departmentRecommendation: null,
+    department_recommendation: null,
+    departmentReviewerName: null,
+    department_reviewer_name: null,
+    departmentReviewNotes: null,
+    department_review_notes: null,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-4',
+    name: 'Faculty Quantum Computing & Cryptography Workshop',
+    title: 'Faculty Quantum Computing & Cryptography Workshop',
+    description: '3-day hands-on faculty development workshop on Qiskit and Post-Quantum Cryptography.',
+    venueRoomId: 'room-ab1-e104',
+    venue_id: 'room-ab1-e104',
+    requestedBy: 'Dr Thilaga M (Associate Professor)',
+    organizer: 'Dr Thilaga M (Associate Professor)',
+    department: 'Computer Science & Engineering',
+    date: '2026-10-24',
+    event_date: '2026-10-24',
+    start: '09:00',
+    start_slot: '09:00',
+    end: '16:00',
+    end_slot: '16:00',
+    audienceSize: 45,
+    expected_audience: 45,
+    eventLevel: 'regional',
+    event_level: 'regional',
+    academic: true,
+    externalGuests: false,
+    status: 'pending',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 74,
+    combined_priority_score: 74,
+    rawScore: 72.0,
+    scoreBreakdown: {
+      eventLevelFactor: 20,
+      academicBonus: 20,
+      audienceFit: 18,
+      leadTimeScore: 16,
+    },
+    departmentRecommendation: null,
+    department_recommendation: null,
+    departmentReviewerName: null,
+    department_reviewer_name: null,
+    departmentReviewNotes: null,
+    department_review_notes: null,
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'evt-seed-5',
+    name: 'Chancellor Amritavarsham Distinguished Keynote',
+    title: 'Chancellor Amritavarsham Distinguished Keynote',
+    description: 'Inaugural university keynote address by visiting Nobel Laureate in Computational Sciences.',
+    venueRoomId: 'venue-auditorium',
+    venue_id: 'venue-auditorium',
+    requestedBy: 'Office of the Vice Chancellor',
+    organizer: 'Office of the Vice Chancellor',
+    department: 'University Administration',
+    date: '2026-10-12',
+    event_date: '2026-10-12',
+    start: '10:00',
+    start_slot: '10:00',
+    end: '13:00',
+    end_slot: '13:00',
+    audienceSize: 1100,
+    expected_audience: 1100,
+    eventLevel: 'international',
+    event_level: 'international',
+    academic: true,
+    externalGuests: true,
+    status: 'approved',
+    priority: 1,
+    priorityLabel: 'High',
+    priorityScore: 98,
+    combined_priority_score: 98,
+    departmentRecommendation: 'RECOMMENDED',
+    department_recommendation: 'RECOMMENDED',
+    departmentReviewerName: 'Campus Director',
+    department_reviewer_name: 'Campus Director',
+    departmentReviewNotes: 'Institutional keynote cleared with highest university priority.',
+    department_review_notes: 'Institutional keynote cleared with highest university priority.',
+    decidedBy: 'user-director-1',
+    decidedAt: new Date().toISOString(),
+    adminReason: 'Chancellor institutional keynote cleared by Campus Director.',
+    createdAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  },
+]
+
 function freshDb() {
   return {
     profiles: SEED_PROFILES,
@@ -90,7 +304,7 @@ function freshDb() {
     ],
     roomBookings: [],
     blockedDates: [],
-    events: [],
+    events: [...SEED_EVENTS],
     facilities: SEED_FACILITIES.map((f) => ({ ...f, underMaintenance: false })),
     facilityBookings: [],
     inductions: [],
@@ -362,6 +576,24 @@ function load() {
         save(parsed)
       }
     }
+    // Synchronize SEED_EVENTS so pending approvals, recommendations and clashes are immediately available
+    if (parsed) {
+      if (!Array.isArray(parsed.events) || parsed.events.length === 0) {
+        parsed.events = [...SEED_EVENTS]
+        save(parsed)
+      } else {
+        let evChanged = false
+        for (const se of SEED_EVENTS) {
+          if (!parsed.events.some((e) => e.id === se.id)) {
+            parsed.events.push(se)
+            evChanged = true
+          }
+        }
+        if (evChanged) {
+          save(parsed)
+        }
+      }
+    }
     return parsed
   } catch (err) {
     console.error('spacehub: failed to load mock DB, reseeding', err)
@@ -382,6 +614,13 @@ function mutate(fn) {
   save(db)
   emitDataChanged()
   return result
+}
+
+export function resetDemoEvents() {
+  return mutate((d) => {
+    d.events = [...SEED_EVENTS]
+    return d.events
+  })
 }
 
 export function resetMockDb() {
@@ -1003,9 +1242,26 @@ export async function decideEvent(id, { decision, reason, byUserId, overridden }
     const e = d.events.find((x) => x.id === id)
     e.status = decision
     e.adminReason = reason?.trim() || null
+    e.admin_reason = reason?.trim() || null
     e.decidedBy = byUserId
     e.decidedAt = new Date().toISOString()
     e.overridden = !!overridden
+    e.override_justification = overridden ? (reason?.trim() || null) : null
+
+    // Register institutional audit log
+    if (!d.auditLogs) d.auditLogs = []
+    d.auditLogs.unshift({
+      id: newId('aud'),
+      actorId: byUserId || 'user-director-1',
+      actorName: 'Campus Director',
+      actorRole: 'campus_director',
+      action: decision === EVENT_STATUS.APPROVED ? (overridden ? 'EVENT_APPROVED_WITH_OVERRIDE' : 'EVENT_APPROVED') : 'EVENT_REJECTED',
+      entityType: 'EVENT',
+      entityId: id,
+      details: `Campus Director marked '${e.name || e.title}' as ${decision.toUpperCase()}. Reason/Justification: ${reason || 'Standard Institutional Approval'}`,
+      timestamp: new Date().toISOString(),
+    })
+
     return e
   })
 }
@@ -1017,10 +1273,28 @@ export async function recommendEvent(id, { recommendation, notes, byUserId, byUs
   return mutate((d) => {
     const e = d.events.find((x) => x.id === id)
     e.departmentRecommendation = recommendation
+    e.department_recommendation = recommendation
     e.departmentReviewerId = byUserId
     e.departmentReviewerName = byUserName
+    e.department_reviewer_name = byUserName
     e.departmentReviewNotes = notes
+    e.department_review_notes = notes
     e.status = recommendation === 'RECOMMENDED' ? 'awaiting_director_approval' : recommendation.toLowerCase()
+
+    // Register departmental audit log
+    if (!d.auditLogs) d.auditLogs = []
+    d.auditLogs.unshift({
+      id: newId('aud'),
+      actorId: byUserId || 'user-hod-1',
+      actorName: byUserName || 'Department Reviewer',
+      actorRole: 'department_reviewer',
+      action: 'EVENT_RECOMMENDATION_SUBMITTED',
+      entityType: 'EVENT',
+      entityId: id,
+      details: `Official Department Recommendation (${recommendation}) recorded for '${e.name || e.title}'. Review Notes: ${notes || 'Endorsed for Director Sanction'}`,
+      timestamp: new Date().toISOString(),
+    })
+
     return e
   })
 }
