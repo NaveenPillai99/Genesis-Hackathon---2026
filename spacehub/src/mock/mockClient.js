@@ -342,7 +342,27 @@ function load() {
       save(db)
       return db
     }
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    // Synchronize SEED_PROFILES into parsed profiles to guarantee new accounts exist
+    if (parsed && Array.isArray(parsed.profiles)) {
+      let changed = false
+      for (const sp of SEED_PROFILES) {
+        const existingIdx = parsed.profiles.findIndex((p) => p.id === sp.id)
+        if (existingIdx === -1) {
+          parsed.profiles.push(sp)
+          changed = true
+        } else {
+          if (parsed.profiles[existingIdx].role !== sp.role) {
+            parsed.profiles[existingIdx] = { ...sp, ...parsed.profiles[existingIdx], role: sp.role }
+            changed = true
+          }
+        }
+      }
+      if (changed) {
+        save(parsed)
+      }
+    }
+    return parsed
   } catch (err) {
     console.error('spacehub: failed to load mock DB, reseeding', err)
     const db = freshDb()
