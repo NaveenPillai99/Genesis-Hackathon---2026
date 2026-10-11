@@ -199,7 +199,7 @@ export default function RoleSelect() {
                 onClick={() => setRole(null)}
                 className="mb-3 text-xs font-semibold text-brand-600 hover:underline flex items-center gap-1"
               >
-                ← Back to all 10 roles
+                ← Back to all roles
               </button>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
                 Select account for: {ROLE_LABELS[role]}

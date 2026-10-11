@@ -64,12 +64,16 @@ def get_full_profile(
 ):
     from app.models import RoomBooking, UserInduction, Facility, TimetableChangeRequest, LostFoundItem
     from app.config import (
+        ROLE_CAMPUS_DIRECTOR, ROLE_DEAN, ROLE_HOD,
         ROLE_STUDENT, ROLE_CLASS_REP, ROLE_CLASS_ADVISOR, ROLE_FACULTY,
         ROLE_LAB_ASSISTANT, ROLE_LAB_ADMIN, ROLE_RESOURCE_ADMIN,
         ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN
     )
 
     role_labels = {
+        ROLE_CAMPUS_DIRECTOR: "Campus Director",
+        ROLE_DEAN: "Dean of School",
+        ROLE_HOD: "Head of Department (HOD)",
         ROLE_STUDENT: "Student",
         ROLE_CLASS_REP: "Class Representative",
         ROLE_CLASS_ADVISOR: "Class Advisor",
@@ -82,6 +86,22 @@ def get_full_profile(
     }
 
     role_permissions = {
+        ROLE_CAMPUS_DIRECTOR: [
+            "Final Approval Authority for Campus Resource Bookings",
+            "Institution-Wide Timetable & Venue Visibility",
+            "Algorithmic Priority Policy Management & Override",
+            "Campus Resource Governance & Audits"
+        ],
+        ROLE_DEAN: [
+            "School-Wide Timetable & Faculty Visibility",
+            "Review & Recommend Department Event Proposals",
+            "Departmental Space & Resource Oversight"
+        ],
+        ROLE_HOD: [
+            "Department-Wide Class & Batch Timetable Oversight",
+            "Department Faculty Teaching Schedule Access",
+            "Department Event Endorsement & Recommendations"
+        ],
         ROLE_STUDENT: [
             "View Classroom Availability", "View Approved Events",
             "Book Inducted Labs", "Submit Lost/Found Reports", "Track Personal Claims"
