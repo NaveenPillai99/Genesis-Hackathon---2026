@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listNotifications, markNotificationRead, markAllNotificationsRead } from '../../lib/dataClient'
+import { api } from '../../lib/apiClient'
 import { useAuth } from '../../context/AuthContext'
 
 export default function NotificationDrawer({ isOpen, onClose }) {
@@ -11,7 +12,29 @@ export default function NotificationDrawer({ isOpen, onClose }) {
     if (!user) return
     setLoading(true)
     try {
-      const items = await listNotifications(user.id)
+      let items = []
+      try {
+        const apiItems = await api.getNotifications()
+        if (Array.isArray(apiItems) && apiItems.length > 0) {
+          items = apiItems.map((n) => ({
+            id: n.id,
+            recipientId: n.recipient_id || n.recipientId,
+            title: n.title,
+            message: n.message,
+            category: n.category,
+            link: n.link,
+            isRead: !!(n.is_read ?? n.isRead),
+            createdAt: n.created_at || n.createdAt || new Date().toISOString()
+          }))
+        }
+      } catch (err) {
+        // Fallback to dataClient mock
+      }
+
+      if (items.length === 0) {
+        const localItems = await listNotifications(user.id)
+        items = localItems || []
+      }
       setNotifications(items || [])
     } catch (e) {
       console.error(e)
@@ -25,14 +48,24 @@ export default function NotificationDrawer({ isOpen, onClose }) {
   }, [isOpen, user])
 
   async function handleMarkRead(id) {
-    await markNotificationRead(id)
+    try {
+      await api.markNotificationRead(id)
+    } catch (err) {}
+    try {
+      await markNotificationRead(id)
+    } catch (err) {}
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     )
   }
 
   async function handleMarkAll() {
-    await markAllNotificationsRead(user.id)
+    try {
+      await api.markAllNotificationsRead()
+    } catch (err) {}
+    try {
+      await markAllNotificationsRead(user.id)
+    } catch (err) {}
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
   }
 

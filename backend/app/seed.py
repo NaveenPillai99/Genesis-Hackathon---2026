@@ -1,15 +1,47 @@
 from datetime import datetime
+from sqlalchemy import text
 from app.database import SessionLocal, Base, engine
 from app.models import (
     User, Role, Permission, RolePermission, ResourceAssignment,
     Room, TimetableSlot, RoomBooking, TimetableChangeRequest,
     EventRequest, Facility, FacilityBooking, HPCAllocation, HPCNode, HPCJob, HPCIncident,
-    UserInduction, LostFoundItem, ItemClaim, CustodyLog, Notification, AuditLog
+    UserInduction, LostFoundItem, ItemClaim, CustodyLog, Notification, AuditLog,
+    Department, DepartmentHandler, ItemMatchCandidate
 )
 from app.auth import hash_password, ROLE_PERMISSIONS
+from app.matching_engine import run_cross_department_matching
+
+def ensure_columns(target_engine):
+    with target_engine.connect() as conn:
+        for table, col, col_type in [
+            ("departments", "department_name", "TEXT"),
+            ("departments", "code", "TEXT"),
+            ("departments", "active", "BOOLEAN DEFAULT 1"),
+            ("departments", "created_at", "DATETIME"),
+            ("lost_found_items", "destination_department_id", "TEXT"),
+            ("lost_found_items", "destination_department_name", "TEXT"),
+            ("lost_found_items", "characteristics", "TEXT"),
+            ("lost_found_items", "private_identifying_details", "TEXT"),
+            ("lost_found_items", "associated_department", "TEXT"),
+            ("lost_found_items", "custody_status", "TEXT DEFAULT 'reported'"),
+            ("lost_found_items", "verification_status", "TEXT DEFAULT 'unverified'"),
+            ("lost_found_items", "verified_by_id", "TEXT"),
+            ("lost_found_items", "verified_by_name", "TEXT"),
+            ("lost_found_items", "claimant_college_id", "TEXT"),
+            ("lost_found_items", "handover_recipient_name", "TEXT"),
+            ("lost_found_items", "handover_timestamp", "DATETIME"),
+            ("lost_found_items", "is_synthetic", "BOOLEAN DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
 
 def seed_database(db: SessionLocal = None):
-    Base.metadata.create_all(bind=engine)
+    bind = db.get_bind() if db is not None else engine
+    Base.metadata.create_all(bind=bind)
+    ensure_columns(bind)
     should_close = False
     if db is None:
         db = SessionLocal()
@@ -68,6 +100,15 @@ def seed_database(db: SessionLocal = None):
             role="student",
             department="CSE",
             class_section="CSE, V A",
+            password_hash=pwd
+        ),
+        User(
+            id="user-student-2",
+            name="Rohan Gupta",
+            email="rohan.gupta@cb.students.amrita.edu",
+            role="student",
+            department="CSE",
+            class_section="CSE, V B",
             password_hash=pwd
         ),
         User(
@@ -461,29 +502,172 @@ def seed_database(db: SessionLocal = None):
         ))
         db.commit()
 
-    # 12. Sample Lost and Found
-    if not db.query(LostFoundItem).first():
-        db.add(LostFoundItem(
-            id="lf-001",
+    # 12. Departments & Cross-Department Handlers
+    dept_seeds = [
+        ("dept-cse", "Department of Computer Science & Engineering", "CSE", "user-faculty-1"),
+        ("dept-math", "Department of Mathematics", "MATH", "user-classadvisor-1"),
+        ("dept-ece", "Department of Electronics & Communication", "ECE", "user-faculty-1"),
+        ("dept-mech", "Department of Mechanical Engineering", "MECH", "user-faculty-1"),
+        ("dept-welfare", "Office of Student Welfare", "WELFARE", "user-welfare-1"),
+    ]
+    for d_id, d_name, d_code, h_id in dept_seeds:
+        if not db.query(Department).filter(Department.id == d_id).first():
+            db.add(Department(id=d_id, name=d_name, department_name=d_name, code=d_code, active=True))
+        if not db.query(DepartmentHandler).filter(DepartmentHandler.department_id == d_id).first():
+            db.add(DepartmentHandler(user_id=h_id, department_id=d_id, handler_permissions="full_handler"))
+    db.commit()
+
+    # 13. Synthetic Demonstration Data: Cross-Department Lost & Found Matching Scenario
+    # (Labeled clearly as SYNTHETIC DEMONSTRATION DATA)
+    synthetic_items = [
+        # Scenario Item 1: Found white AirPods in AB3 routed to CSE Department
+        LostFoundItem(
+            id="lf-airpods-found",
             report_type="found",
-            title="Casio FX-991CW Scientific Calculator",
+            title="White Apple AirPods (3rd Gen) in Charging Case",
             category="electronics",
-            description="Black scientific calculator with green engraved sticker 'VII B DS' on the casing.",
-            location_found="Classroom AB1-E104, Desk Row 3",
-            is_classroom=True,
-            room_id="AB1-E104",
+            description="[SYNTHETIC] White Apple wireless earbuds in glossy charging case found on window sill in AB3 2nd floor corridor.",
+            location_found="AB3 Corridor, 2nd Floor",
+            is_classroom=False,
+            room_id=None,
             found_date="2026-10-10",
-            found_time="10:35",
+            found_time="11:15",
             finder_id="user-student-1",
             finder_name="Aarav Menon",
-            current_custody="class_advisor",
-            storage_location="Desk of Class Advisor Dr Devika (AB1-204)",
-            assigned_handler_id="user-classadvisor-1",
-            assigned_handler_name="Dr Devika",
-            routing_reason="Classroom Slot Match: Automatically routed to Class Advisor Dr Devika.",
-            status="in_custody"
-        ))
-        db.commit()
+            destination_department_id="dept-cse",
+            destination_department_name="Department of Computer Science & Engineering",
+            assigned_handler_id="user-faculty-1",
+            assigned_handler_name="Dr Thilaga M (CSE Handler)",
+            current_custody="dept-cse",
+            storage_location="CSE Department Office (AB3 Room 204)",
+            routing_reason="Routed to CSE Department Handler Desk (Finder Selection).",
+            characteristics="Colour: White, Brand: Apple, Case: White glossy case with faint mark near hinge",
+            status="in_custody",
+            custody_status="in_custody",
+            is_synthetic=True
+        ),
+        # Scenario Item 2: Lost white AirPods in AB3 reported by student Rohan Gupta
+        LostFoundItem(
+            id="lf-airpods-lost",
+            report_type="lost",
+            title="White Apple AirPods Earbuds with Case",
+            category="electronics",
+            description="[SYNTHETIC] Misplaced my white AirPods in charging case during morning lectures in AB3.",
+            location_found="AB3 Building",
+            is_classroom=False,
+            room_id=None,
+            found_date="2026-10-10",
+            found_time="10:30",
+            finder_id="user-student-2",
+            finder_name="Rohan Gupta",
+            assigned_handler_id="user-faculty-1",
+            assigned_handler_name="Campus Central Lost Property Network",
+            current_custody="student",
+            storage_location="Searchable Across All Departments",
+            routing_reason="Searchable Across All Departments & Student Welfare",
+            characteristics="Colour: White, Brand: Apple, Case: White glossy case",
+            private_identifying_details="Serial ending in 94X2; faint blue ink speck on the underside of right earbud.",
+            status="active",
+            custody_status="active",
+            is_synthetic=True
+        ),
+        # Scenario Item 3: Unrelated Found Black Sony Headphones (different color, different building)
+        LostFoundItem(
+            id="lf-headphones-unrelated",
+            report_type="found",
+            title="Black Sony WH-1000XM4 Wireless Headphones",
+            category="electronics",
+            description="[SYNTHETIC] Black over-ear noise-cancelling headphones found on AB1 lawn benches.",
+            location_found="AB1 Front Lawn",
+            is_classroom=False,
+            room_id=None,
+            found_date="2026-10-08",
+            found_time="16:00",
+            finder_id="user-student-1",
+            finder_name="Aarav Menon",
+            destination_department_id="dept-welfare",
+            destination_department_name="Office of Student Welfare",
+            assigned_handler_id="user-welfare-1",
+            assigned_handler_name="Ms Priya Balan",
+            current_custody="dept-welfare",
+            storage_location="Student Welfare Locker (AB3 Room 101)",
+            routing_reason="Outdoor Common Area: Routed to Student Welfare Custodian.",
+            characteristics="Colour: Black, Brand: Sony, Over-ear cushions",
+            status="in_custody",
+            custody_status="in_custody",
+            is_synthetic=True
+        ),
+        # Scenario Item 4: Item Awaiting Handover
+        LostFoundItem(
+            id="lf-waterbottle-awaiting",
+            report_type="found",
+            title="Milton Thermosteel Silver Flask 750ml",
+            category="bottles",
+            description="[SYNTHETIC] Insulated silver water flask found on 1st floor reading table.",
+            location_found="Central Library Reading Hall",
+            is_classroom=False,
+            room_id=None,
+            found_date="2026-10-11",
+            found_time="09:00",
+            finder_id="user-student-1",
+            finder_name="Aarav Menon",
+            destination_department_id="dept-welfare",
+            destination_department_name="Office of Student Welfare",
+            assigned_handler_id="user-welfare-1",
+            assigned_handler_name="Ms Priya Balan",
+            current_custody="finder",
+            storage_location="With Finder (Awaiting Handover)",
+            routing_reason="Reported by finder, physical item awaiting handover at Student Welfare desk.",
+            characteristics="Colour: Silver, Brand: Milton, Volume: 750ml",
+            status="reported",
+            custody_status="awaiting_handover",
+            is_synthetic=True
+        ),
+        # Scenario Item 5: Item Successfully Returned after in-person College ID verification
+        LostFoundItem(
+            id="lf-umbrella-returned",
+            report_type="found",
+            title="Navy Blue Folding Umbrella with Wooden Handle",
+            category="accessories",
+            description="[SYNTHETIC] Compact navy blue rain umbrella found outside AB2 cafeteria.",
+            location_found="AB2 Cafeteria Entrance",
+            is_classroom=False,
+            room_id=None,
+            found_date="2026-10-09",
+            found_time="13:30",
+            finder_id="user-student-1",
+            finder_name="Aarav Menon",
+            destination_department_id="dept-welfare",
+            destination_department_name="Office of Student Welfare",
+            assigned_handler_id="user-welfare-1",
+            assigned_handler_name="Ms Priya Balan",
+            current_custody="returned",
+            storage_location="Returned to Owner",
+            routing_reason="Restored to verified owner.",
+            characteristics="Colour: Navy Blue, Pattern: Solid, Handle: Curved wood",
+            verification_status="id_verified",
+            claimant_college_id="CB.EN.U4CSE21201",
+            handover_recipient_name="Siddharth Rao",
+            return_date="2026-10-09 17:00",
+            handover_notes="In-person College ID card CB.EN.U4CSE21201 verified. Student matched wooden handle engraving.",
+            status="returned",
+            custody_status="returned",
+            is_synthetic=True
+        ),
+    ]
+
+    for item in synthetic_items:
+        if not db.query(LostFoundItem).filter(LostFoundItem.id == item.id).first():
+            db.add(item)
+    db.commit()
+
+    # Run matching for synthetic items to generate pre-computed candidate pair
+    airpods_found = db.query(LostFoundItem).filter(LostFoundItem.id == "lf-airpods-found").first()
+    if airpods_found:
+        try:
+            run_cross_department_matching(db, airpods_found)
+        except Exception:
+            pass
 
     # 13. Audit Log
     if not db.query(AuditLog).first():

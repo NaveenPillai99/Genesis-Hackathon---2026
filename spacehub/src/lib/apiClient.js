@@ -121,6 +121,7 @@ export const api = {
   }),
 
   // Lost & Found
+  getDepartments: () => apiRequest('/lost-found/departments'),
   getLostFoundItems: (params = '') => apiRequest(`/lost-found/${params ? '?' + params : ''}`),
   getMyReports: () => apiRequest('/lost-found/my-reports'),
   getAssignedItems: () => apiRequest('/lost-found/assigned-to-me'),
@@ -139,6 +140,18 @@ export const api = {
     body: JSON.stringify(data),
   }),
   recordHandover: (itemId, data) => apiRequest(`/lost-found/${itemId}/handover`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  verifyItemInPerson: (itemId, data) => apiRequest(`/lost-found/${itemId}/in-person-verification`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  receivePhysicalHandover: (itemId, data) => apiRequest(`/lost-found/${itemId}/receive-handover`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  transferCustody: (itemId, data) => apiRequest(`/lost-found/${itemId}/transfer`, {
     method: 'POST',
     body: JSON.stringify(data),
   }),

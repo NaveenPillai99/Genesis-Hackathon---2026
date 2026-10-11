@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Integer, Boolean, Float, DateTime, ForeignKey, Text
+    Column, String, Integer, Boolean, Float, DateTime, ForeignKey, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -64,7 +64,11 @@ class Department(Base):
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
-    building = Column(String, nullable=False)
+    building = Column(String, nullable=True, default="Campus Center")
+    department_name = Column(String, nullable=True)
+    code = Column(String, nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -271,6 +275,16 @@ class UserInduction(Base):
     inducted_at = Column(DateTime, default=datetime.utcnow)
     inducted_by = Column(String, nullable=False)
 
+
+class DepartmentHandler(Base):
+    __tablename__ = "department_handlers"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    department_id = Column(String, ForeignKey("departments.id"), nullable=False)
+    handler_permissions = Column(String, default="full_handler")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class LostFoundItem(Base):
     __tablename__ = "lost_found_items"
 
@@ -292,13 +306,47 @@ class LostFoundItem(Base):
     assigned_handler_id = Column(String, nullable=True)
     assigned_handler_name = Column(String, nullable=False)
     routing_reason = Column(Text, nullable=True)
-    status = Column(String, default="reported", index=True)  # 'reported', 'in_custody', 'claim_pending', 'returned', 'unclaimed', 'closed'
+    status = Column(String, default="reported", index=True)  # 'reported', 'awaiting_handover', 'in_custody', 'claim_pending', 'returned', 'transferred', 'unclaimed', 'closed'
     return_date = Column(String, nullable=True)
     handover_notes = Column(Text, nullable=True)
+
+    # Cross-Department Routing & Matching Extensions
+    destination_department_id = Column(String, nullable=True, index=True)
+    destination_department_name = Column(String, nullable=True)
+    characteristics = Column(Text, nullable=True)  # Colour, brand, case type, identifying markers
+    private_identifying_details = Column(Text, nullable=True)  # Kept private; verified in-person with College ID
+    associated_department = Column(String, nullable=True)
+    custody_status = Column(String, default="reported")  # 'reported', 'awaiting_handover', 'in_custody', 'claim_pending', 'returned', 'transferred', 'closed'
+    verification_status = Column(String, default="unverified")  # 'unverified', 'id_verified', 'rejected'
+    verified_by_id = Column(String, nullable=True)
+    verified_by_name = Column(String, nullable=True)
+    claimant_college_id = Column(String, nullable=True)
+    handover_recipient_name = Column(String, nullable=True)
+    handover_timestamp = Column(DateTime, nullable=True)
+    is_synthetic = Column(Boolean, default=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     claims = relationship("ItemClaim", back_populates="item", cascade="all, delete-orphan")
     custody_logs = relationship("CustodyLog", back_populates="item", cascade="all, delete-orphan")
+
+class ItemMatchCandidate(Base):
+    __tablename__ = "item_match_candidates"
+    __table_args__ = (
+        UniqueConstraint("lost_report_id", "found_report_id", name="uq_lost_found_match_pair"),
+    )
+
+    id = Column(String, primary_key=True, default=gen_id)
+    lost_report_id = Column(String, ForeignKey("lost_found_items.id"), nullable=False, index=True)
+    found_report_id = Column(String, ForeignKey("lost_found_items.id"), nullable=False, index=True)
+    match_score = Column(Float, nullable=False)
+    component_scores = Column(Text, nullable=True)  # JSON string of weights & feature breakdown
+    review_status = Column(String, default="pending_review", index=True)  # 'pending_review', 'notified', 'confirmed_match', 'dismissed'
+    last_calculated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lost_item = relationship("LostFoundItem", foreign_keys=[lost_report_id])
+    found_item = relationship("LostFoundItem", foreign_keys=[found_report_id])
 
 class ItemClaim(Base):
     __tablename__ = "item_claims"

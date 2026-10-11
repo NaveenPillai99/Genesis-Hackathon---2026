@@ -318,6 +318,14 @@ class HPCOverviewResponse(BaseModel):
     avg_gpu_utilization: float
     telemetry_source: str = "SYNTHETIC_TELEMETRY_ENGINE (SIMULATED FOR DEMONSTRATION)"
 
+# Departments
+class DepartmentResponse(BaseModel):
+    id: str
+    department_name: str
+    code: str
+    active: bool
+    model_config = ConfigDict(from_attributes=True)
+
 # Lost & Found
 class LostFoundCreate(BaseModel):
     report_type: str  # 'found', 'lost'
@@ -331,6 +339,12 @@ class LostFoundCreate(BaseModel):
     found_time: Optional[str] = None
     photo_url: Optional[str] = None
     storage_location: Optional[str] = "Campus Security Desk"
+    # Cross-department routing & matching fields
+    destination_department_id: Optional[str] = None
+    characteristics: Optional[str] = None
+    private_identifying_details: Optional[str] = None
+    associated_department: Optional[str] = None
+    is_physically_handed_over: bool = False
 
 class ClaimCreate(BaseModel):
     proof_description: str
@@ -339,6 +353,17 @@ class ClaimCreate(BaseModel):
 class ClaimReview(BaseModel):
     decision: str  # 'approved', 'rejected', 'proof_requested'
     handler_notes: Optional[str] = None
+
+class InPersonVerificationRequest(BaseModel):
+    claimant_college_id: str
+    claimant_name: str
+    verification_notes: Optional[str] = None
+    handover_notes: Optional[str] = None
+
+class CustodyTransferRequest(BaseModel):
+    new_department_id: str
+    transfer_reason: str
+    new_storage_location: Optional[str] = None
 
 class HandoverUpdate(BaseModel):
     new_custody: str  # 'in_custody', 'returned', 'transferred'
@@ -369,6 +394,18 @@ class CustodyLogResponse(BaseModel):
     timestamp: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class MatchCandidateResponse(BaseModel):
+    id: str
+    lost_report_id: str
+    found_report_id: str
+    match_score: float
+    component_scores: Optional[str] = None
+    review_status: str
+    last_calculated_at: datetime
+    lost_item: Optional[dict] = None
+    found_item: Optional[dict] = None
+    model_config = ConfigDict(from_attributes=True)
+
 class LostFoundResponse(BaseModel):
     id: str
     report_type: str
@@ -382,14 +419,28 @@ class LostFoundResponse(BaseModel):
     found_time: Optional[str] = None
     photo_url: Optional[str] = None
     finder_name: str
+    finder_id: Optional[str] = None
     current_custody: str
     storage_location: str
     assigned_handler_name: str
+    assigned_handler_id: Optional[str] = None
     routing_reason: Optional[str] = None
     status: str
     return_date: Optional[str] = None
     handover_notes: Optional[str] = None
     created_at: datetime
+
+    # Cross-department routing fields
+    destination_department_id: Optional[str] = None
+    destination_department_name: Optional[str] = None
+    characteristics: Optional[str] = None
+    custody_status: Optional[str] = None
+    verification_status: Optional[str] = None
+    verified_by_name: Optional[str] = None
+    claimant_college_id: Optional[str] = None
+    handover_recipient_name: Optional[str] = None
+    is_synthetic: Optional[bool] = False
+
     claims: List[ItemClaimResponse] = []
     custody_logs: List[CustodyLogResponse] = []
     model_config = ConfigDict(from_attributes=True)
