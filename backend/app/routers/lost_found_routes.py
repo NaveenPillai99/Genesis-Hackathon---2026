@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from app.database import get_db
 from app.models import (
     LostFoundItem, ItemClaim, CustodyLog, TimetableSlot, Room, User,
@@ -10,8 +11,10 @@ from app.models import (
 )
 from app.schemas import (
     LostFoundCreate, LostFoundResponse, ClaimCreate, ClaimReview,
-    HandoverUpdate, ItemClaimResponse, DepartmentResponse,
-    InPersonVerificationRequest, CustodyTransferRequest, MatchCandidateResponse
+    HandoverUpdate, ItemClaimResponse, DepartmentResponse, CustodyLogResponse,
+    InPersonVerificationRequest, CustodyTransferRequest,
+    StudentLostReportResponse, StudentFoundReportResponse, StudentPublicFoundResponse,
+    HandlerMatchCandidateDetail
 )
 from app.auth import get_current_user, require_roles, record_audit, send_notification
 from app.config import (
@@ -70,14 +73,170 @@ def resolve_slot_from_time(time_str: str) -> str:
         return "slot4"
     elif mins < 12 * 60 + 25:
         return "slot5"
-    elif mins < 13 * 60 + 15:
+    elif mins < 14 * 60:
         return "slot6"
-    elif mins < 14 * 60 + 55:
+    elif mins < 14 * 60 + 50:
+        return "slot7"
+    elif mins < 15 * 60 + 40:
         return "slot8"
-    elif mins < 15 * 60 + 45:
+    elif mins < 16 * 60 + 30:
         return "slot9"
     else:
         return "slot10"
+
+def get_user_department_id(department_name: Optional[str]) -> Optional[str]:
+    if not department_name:
+        return None
+    dept_upper = department_name.strip().upper()
+    if "MATH" in dept_upper:
+        return "dept-math"
+    if "COMPUTER" in dept_upper or "CSE" in dept_upper or dept_upper == "CS":
+        return "dept-cse"
+    if "ELECTRONIC" in dept_upper or "ECE" in dept_upper:
+        return "dept-ece"
+    if "MECHANICAL" in dept_upper or "MECH" in dept_upper:
+        return "dept-mech"
+    return None
+
+def check_handler_scope(user: User, item: LostFoundItem, db: Session):
+    """
+    Enforces server-side department-level authorization:
+    Student Welfare and Admins have campus-wide oversight.
+    Department handlers (Faculty / Class Advisor) can ONLY access cases assigned to their
+    department or directly assigned to their user ID.
+    """
+    if user.role in [ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
+        return True
+
+    if item.assigned_handler_id == user.id:
+        return True
+
+    matching_dept_id = get_user_department_id(user.department)
+    if matching_dept_id and item.destination_department_id == matching_dept_id:
+        return True
+
+    dh = db.query(DepartmentHandler).filter(
+        DepartmentHandler.user_id == user.id,
+        DepartmentHandler.department_id == item.destination_department_id
+    ).first()
+    if dh:
+        return True
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Forbidden: You are not authorized to view or manage cases for this department."
+    )
+
+def format_handler_case(item: LostFoundItem, db: Session) -> LostFoundResponse:
+    """Enriches full case details for authorized handlers only."""
+    owner_user = None
+    if item.report_type == "lost":
+        owner_user = db.query(User).filter(User.id == item.finder_id).first()
+
+    candidates = []
+    if item.report_type == "found":
+        c_rows = db.query(ItemMatchCandidate).filter(
+            ItemMatchCandidate.found_report_id == item.id
+        ).order_by(ItemMatchCandidate.match_score.desc()).all()
+    else:
+        c_rows = db.query(ItemMatchCandidate).filter(
+            ItemMatchCandidate.lost_report_id == item.id
+        ).order_by(ItemMatchCandidate.match_score.desc()).all()
+
+    for c in c_rows:
+        opp = c.lost_item if item.report_type == "found" else c.found_item
+        if not opp or opp.status in ["returned", "recovered", "closed", "cancelled"]:
+            continue
+        breakdown = {}
+        if c.component_scores:
+            try:
+                breakdown = json.loads(c.component_scores)
+            except Exception:
+                pass
+
+        lost_it = c.lost_item
+        found_it = c.found_item
+        lost_owner = db.query(User).filter(User.id == lost_it.finder_id).first() if lost_it else None
+        found_finder = db.query(User).filter(User.id == found_it.finder_id).first() if found_it else None
+
+        candidates.append(HandlerMatchCandidateDetail(
+            candidate_id=c.id,
+            lost_item_id=lost_it.id if lost_it else "",
+            lost_item_title=lost_it.title if lost_it else "",
+            lost_item_category=lost_it.category if lost_it else "",
+            lost_item_description=lost_it.description if lost_it else "",
+            lost_item_location=lost_it.location_found if lost_it else "",
+            lost_item_characteristics=lost_it.characteristics if lost_it else None,
+            lost_item_private_details=lost_it.private_identifying_details if lost_it else None,
+            lost_owner_name=lost_owner.name if lost_owner else (lost_it.finder_name if lost_it else "Unknown"),
+            lost_owner_student_id=lost_owner.student_id if lost_owner else (lost_it.owner_student_id if lost_it else None),
+            lost_owner_email=lost_owner.email if lost_owner else None,
+            lost_item_status=lost_it.status if lost_it else "",
+
+            found_item_id=found_it.id if found_it else "",
+            found_item_title=found_it.title if found_it else "",
+            found_item_category=found_it.category if found_it else "",
+            found_item_description=found_it.description if found_it else "",
+            found_item_location=found_it.location_found if found_it else "",
+            found_item_characteristics=found_it.characteristics if found_it else None,
+            found_destination_department=found_it.destination_department_name if found_it else None,
+            found_storage_location=found_it.storage_location if found_it else None,
+            found_custody_status=found_it.custody_status if found_it else None,
+            found_finder_name=found_it.finder_name if found_it else None,
+            found_finder_id=found_it.finder_id if found_it else None,
+            found_item_status=found_it.status if found_it else "",
+            found_photo_url=found_it.photo_url if found_it else None,
+
+            match_score=c.match_score,
+            confidence_level=breakdown.get("confidence_level", "HIGH" if c.match_score >= 85 else "POSSIBLE"),
+            component_scores=breakdown,
+            review_status=c.review_status,
+            last_calculated_at=c.last_calculated_at
+        ))
+
+    finder_user = db.query(User).filter(User.id == item.finder_id).first()
+
+    return LostFoundResponse(
+        id=item.id,
+        report_type=item.report_type,
+        title=item.title,
+        category=item.category,
+        description=item.description,
+        location_found=item.location_found,
+        is_classroom=item.is_classroom,
+        room_id=item.room_id,
+        found_date=item.found_date,
+        found_time=item.found_time,
+        photo_url=item.photo_url,
+        finder_name=item.finder_name,
+        finder_id=item.finder_id,
+        finder_email=finder_user.email if finder_user else None,
+        current_custody=item.current_custody,
+        storage_location=item.storage_location,
+        assigned_handler_name=item.assigned_handler_name,
+        assigned_handler_id=item.assigned_handler_id,
+        routing_reason=item.routing_reason,
+        status=item.status,
+        return_date=item.return_date,
+        handover_notes=item.handover_notes,
+        created_at=item.created_at,
+        destination_department_id=item.destination_department_id,
+        destination_department_name=item.destination_department_name,
+        characteristics=item.characteristics,
+        private_identifying_details=item.private_identifying_details,
+        custody_status=item.custody_status,
+        verification_status=item.verification_status,
+        verified_by_name=item.verified_by_name,
+        claimant_college_id=item.claimant_college_id,
+        handover_recipient_name=item.handover_recipient_name,
+        is_synthetic=item.is_synthetic,
+        owner_name=owner_user.name if owner_user else None,
+        owner_student_id=owner_user.student_id if owner_user else item.owner_student_id,
+        owner_email=owner_user.email if owner_user else None,
+        claims=[ItemClaimResponse.model_validate(c) for c in item.claims],
+        custody_logs=[CustodyLogResponse.model_validate(l) for l in item.custody_logs],
+        potential_matches=candidates
+    )
 
 @router.get("/departments", response_model=List[DepartmentResponse])
 def list_departments(db: Session = Depends(get_db)):
@@ -85,15 +244,24 @@ def list_departments(db: Session = Depends(get_db)):
     ensure_departments_seeded(db)
     return db.query(Department).filter(Department.active == True).all()
 
-@router.get("/", response_model=List[LostFoundResponse])
+@router.get("/")
 def list_items(
     report_type: Optional[str] = Query(None, description="'found' or 'lost'"),
     category: Optional[str] = None,
     status: Optional[str] = None,
     department_id: Optional[str] = None,
     search: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """
+    List items with strict privacy enforcement:
+    - Students: CANNOT view other students' lost reports or full private details.
+      Returns only sanitized public found notices (StudentPublicFoundResponse) or their own reports.
+    - Handlers: returns case records scoped to their authorized department or Student Welfare.
+    """
+    is_handler = current_user.role in CAN_PROCESS_CLAIMS
+
     query = db.query(LostFoundItem)
     if report_type:
         query = query.filter(LostFoundItem.report_type == report_type)
@@ -113,85 +281,358 @@ def list_items(
             (LostFoundItem.description.ilike(s)) |
             (LostFoundItem.location_found.ilike(s))
         )
-    return query.order_by(LostFoundItem.created_at.desc()).all()
 
-@router.get("/my-reports", response_model=List[LostFoundResponse])
+    if not is_handler:
+        # Student privacy rule:
+        # Never expose other students' lost reports or private fields!
+        query = query.filter(
+            or_(
+                LostFoundItem.report_type == "found",
+                and_(LostFoundItem.report_type == "lost", LostFoundItem.finder_id == current_user.id)
+            )
+        )
+        items = query.order_by(LostFoundItem.created_at.desc()).all()
+        # Return sanitized public responses
+        return [
+            StudentPublicFoundResponse(
+                id=i.id,
+                category=i.category,
+                title=i.title,
+                location_found=i.location_found,
+                found_date=i.found_date,
+                destination_department_name=i.destination_department_name,
+                custody_status=i.custody_status,
+                status=i.status,
+                created_at=i.created_at
+            )
+            for i in items
+        ]
+
+    # Handler scoping
+    if current_user.role not in [ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
+        user_dept_code = (current_user.department or "").upper()
+        matching_dept_id = None
+        if "CS" in user_dept_code:
+            matching_dept_id = "dept-cse"
+        elif "MATH" in user_dept_code:
+            matching_dept_id = "dept-math"
+        elif "EC" in user_dept_code:
+            matching_dept_id = "dept-ece"
+        elif "MECH" in user_dept_code:
+            matching_dept_id = "dept-mech"
+
+        filters = [LostFoundItem.assigned_handler_id == current_user.id]
+        if matching_dept_id:
+            filters.append(LostFoundItem.destination_department_id == matching_dept_id)
+
+        query = query.filter(or_(*filters))
+
+    items = query.order_by(LostFoundItem.created_at.desc()).all()
+    return [format_handler_case(i, db) for i in items]
+
+@router.get("/my-lost-items", response_model=List[StudentLostReportResponse])
+def get_my_lost_items(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Student's My Lost Items Dashboard (Section 6):
+    Returns ONLY the authenticated student's own lost reports with safe match alerts and collection instructions.
+    Does NOT disclose other reports' detailed info, finder identity, scores, or factor breakdowns.
+    """
+    reports = db.query(LostFoundItem).filter(
+        LostFoundItem.finder_id == current_user.id,
+        LostFoundItem.report_type == "lost"
+    ).order_by(LostFoundItem.created_at.desc()).all()
+
+    results = []
+    for r in reports:
+        has_match = False
+        dept_name = None
+        instructions = None
+
+        if r.status not in ["returned", "recovered", "closed", "cancelled"]:
+            candidates = db.query(ItemMatchCandidate).filter(
+                ItemMatchCandidate.lost_report_id == r.id,
+                ItemMatchCandidate.match_score >= 65.0
+            ).order_by(ItemMatchCandidate.match_score.desc()).all()
+
+            for c in candidates:
+                found = c.found_item
+                if found and found.status not in ["returned", "closed", "cancelled"]:
+                    has_match = True
+                    dept_name = found.destination_department_name or "Department Office"
+                    instructions = f"Visit the {dept_name} office with your college ID card for ownership verification."
+                    break
+
+        results.append(StudentLostReportResponse(
+            id=r.id,
+            report_type="lost",
+            title=r.title,
+            category=r.category,
+            description=r.description,
+            location_found=r.location_found,
+            found_date=r.found_date,
+            found_time=r.found_time,
+            characteristics=r.characteristics,
+            status=r.status,
+            created_at=r.created_at,
+            has_potential_match=has_match,
+            potential_match_dept=dept_name,
+            collection_instructions=instructions
+        ))
+
+    return results
+
+@router.get("/my-found-items", response_model=List[StudentFoundReportResponse])
+def get_my_found_items(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns only found reports submitted by the current user."""
+    items = db.query(LostFoundItem).filter(
+        LostFoundItem.finder_id == current_user.id,
+        LostFoundItem.report_type == "found"
+    ).order_by(LostFoundItem.created_at.desc()).all()
+
+    return [
+        StudentFoundReportResponse(
+            id=i.id,
+            report_type="found",
+            title=i.title,
+            category=i.category,
+            description=i.description,
+            location_found=i.location_found,
+            found_date=i.found_date,
+            found_time=i.found_time,
+            destination_department_id=i.destination_department_id,
+            destination_department_name=i.destination_department_name,
+            storage_location=i.storage_location,
+            custody_status=i.custody_status,
+            status=i.status,
+            created_at=i.created_at,
+            assigned_handler_name=i.assigned_handler_name,
+            current_custody=i.current_custody,
+            routing_reason=i.routing_reason
+        )
+        for i in items
+    ]
+
+@router.get("/my-reports")
 def my_reports(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return db.query(LostFoundItem).filter(
+    """Returns only reports submitted by the current authenticated user."""
+    items = db.query(LostFoundItem).filter(
         LostFoundItem.finder_id == current_user.id
     ).order_by(LostFoundItem.created_at.desc()).all()
+
+    results = []
+    for i in items:
+        if i.report_type == "lost":
+            has_match = False
+            dept_name = None
+            instructions = None
+            if i.status not in ["returned", "recovered", "closed", "cancelled"]:
+                candidates = db.query(ItemMatchCandidate).filter(
+                    ItemMatchCandidate.lost_report_id == i.id,
+                    ItemMatchCandidate.match_score >= 65.0
+                ).all()
+                for c in candidates:
+                    found = c.found_item
+                    if found and found.status not in ["returned", "closed", "cancelled"]:
+                        has_match = True
+                        dept_name = found.destination_department_name or "Department Office"
+                        instructions = f"Visit the {dept_name} office with your college ID card for ownership verification."
+                        break
+
+            results.append(StudentLostReportResponse(
+                id=i.id,
+                report_type="lost",
+                title=i.title,
+                category=i.category,
+                description=i.description,
+                location_found=i.location_found,
+                found_date=i.found_date,
+                found_time=i.found_time,
+                characteristics=i.characteristics,
+                status=i.status,
+                created_at=i.created_at,
+                has_potential_match=has_match,
+                potential_match_dept=dept_name,
+                collection_instructions=instructions
+            ))
+        else:
+            results.append(StudentFoundReportResponse(
+                id=i.id,
+                report_type="found",
+                title=i.title,
+                category=i.category,
+                description=i.description,
+                location_found=i.location_found,
+                found_date=i.found_date,
+                found_time=i.found_time,
+                destination_department_id=i.destination_department_id,
+                destination_department_name=i.destination_department_name,
+                storage_location=i.storage_location,
+                custody_status=i.custody_status,
+                status=i.status,
+                created_at=i.created_at
+            ))
+    return results
+
+@router.post("/{item_id}/cancel")
+def cancel_lost_report(
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Allows an authenticated student to cancel their own active lost report."""
+    item = db.query(LostFoundItem).filter(LostFoundItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if item.finder_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden: You can only cancel your own lost reports.")
+
+    if item.status in ["returned", "recovered", "closed"]:
+        raise HTTPException(status_code=400, detail="Cannot cancel an item that is already recovered or closed.")
+
+    item.status = "cancelled"
+    item.custody_status = "cancelled"
+    db.commit()
+
+    return {"message": "Lost report cancelled successfully.", "id": item_id, "status": "cancelled"}
+
+@router.get("/handler/cases", response_model=List[LostFoundResponse])
+def get_handler_cases(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Department Handler Scoped Case Management (Section 7):
+    Returns cases strictly within the handler's authorized department scope.
+    Unauthorized users and students receive 403 Forbidden.
+    """
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Case management is restricted to authorized handlers."
+        )
+
+    query = db.query(LostFoundItem)
+
+    # Scoping
+    if current_user.role not in [ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
+        matching_dept_id = get_user_department_id(current_user.department)
+
+        filters = [LostFoundItem.assigned_handler_id == current_user.id]
+        if matching_dept_id:
+            filters.append(LostFoundItem.destination_department_id == matching_dept_id)
+
+        query = query.filter(or_(*filters))
+
+    items = query.order_by(LostFoundItem.created_at.desc()).all()
+    return [format_handler_case(i, db) for i in items]
+
+@router.get("/handler/cases/{case_id}", response_model=LostFoundResponse)
+def get_handler_case_by_id(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieves full case details for an authorized handler within their department scope."""
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Only authorized department handlers can access case details."
+        )
+
+    item = db.query(LostFoundItem).filter(LostFoundItem.id == case_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    check_handler_scope(current_user, item, db)
+    return format_handler_case(item, db)
 
 @router.get("/assigned-to-me", response_model=List[LostFoundResponse])
 def assigned_to_me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Department Handler Scoped View:
-    Returns items assigned to this handler or items routed to their authorized department scope.
-    """
-    query = db.query(LostFoundItem)
+    """Alias to get_handler_cases for backwards compatibility."""
+    return get_handler_cases(current_user, db)
 
-    # Student Welfare, System Admin, or Resource Admin has campus-wide oversight
-    if current_user.role in [ROLE_LOST_PROPERTY_HANDLER, ROLE_SYS_ADMIN, ROLE_RESOURCE_ADMIN]:
-        return query.order_by(LostFoundItem.created_at.desc()).all()
-
-    # Department scoped handlers: Class Advisor (Math) or Faculty (CSE/ECE)
-    user_dept_code = (current_user.department or "").upper()
-    matching_dept_id = None
-    if "MATH" in user_dept_code:
-        matching_dept_id = "dept-math"
-    elif "CS" in user_dept_code:
-        matching_dept_id = "dept-cse"
-    elif "EC" in user_dept_code:
-        matching_dept_id = "dept-ece"
-    elif "MECH" in user_dept_code:
-        matching_dept_id = "dept-mech"
-
-    filters = [
-        LostFoundItem.assigned_handler_id == current_user.id,
-        LostFoundItem.current_custody == current_user.role,
-    ]
-    if matching_dept_id:
-        filters.append(LostFoundItem.destination_department_id == matching_dept_id)
-
-    from sqlalchemy import or_
-    return query.filter(or_(*filters)).order_by(LostFoundItem.created_at.desc()).all()
-
-@router.get("/{item_id}", response_model=LostFoundResponse)
+@router.get("/{item_id}")
 def get_item(
     item_id: str,
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Returns item according to role permissions:
+    - Student: ONLY permitted to retrieve their own report. Other students' reports return 403.
+    - Handler: checks department authorization scope. Unauthorized handlers receive 403.
+    """
     item = db.query(LostFoundItem).filter(LostFoundItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    # Mask private identifying details if requester is not owner and not authorized handler
-    if current_user and current_user.id != item.finder_id and current_user.role not in CAN_PROCESS_CLAIMS:
-        item.private_identifying_details = None
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        if item.finder_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Students cannot view other users' reports."
+            )
+        if item.report_type == "lost":
+            return StudentLostReportResponse(
+                id=item.id,
+                report_type="lost",
+                title=item.title,
+                category=item.category,
+                description=item.description,
+                location_found=item.location_found,
+                found_date=item.found_date,
+                found_time=item.found_time,
+                characteristics=item.characteristics,
+                status=item.status,
+                created_at=item.created_at
+            )
+        else:
+            return StudentFoundReportResponse(
+                id=item.id,
+                report_type="found",
+                title=item.title,
+                category=item.category,
+                description=item.description,
+                location_found=item.location_found,
+                found_date=item.found_date,
+                found_time=item.found_time,
+                destination_department_id=item.destination_department_id,
+                destination_department_name=item.destination_department_name,
+                storage_location=item.storage_location,
+                custody_status=item.custody_status,
+                status=item.status,
+                created_at=item.created_at,
+                assigned_handler_name=item.assigned_handler_name,
+                current_custody=item.current_custody,
+                routing_reason=item.routing_reason
+            )
 
-    return item
+    check_handler_scope(current_user, item, db)
+    return format_handler_case(item, db)
 
-@router.post("/report", response_model=LostFoundResponse)
+@router.post("/report")
 def report_item(
     report_in: LostFoundCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Submits a Lost or Found item with Cross-Department Routing and Auto-Matching:
-    - If found:
-      - Finder specifies the handling department or Student Welfare
-      - Sets initial status to REPORTED (or IN_CUSTODY if already physically handed over)
-      - Triggers cross-department matching against all active lost-item reports
-    - If lost:
-      - Becomes active and discoverable across ALL departments by matching engine
-      - Triggers cross-department matching against all active found-item reports
+    Submits a Found or Lost item report:
+    - If found: routes to designated receiving department, sets custody, triggers matching.
+    - If lost: creates active lost report with private verification clues, triggers cross-department matching.
     """
     ensure_departments_seeded(db)
 
@@ -207,7 +648,6 @@ def report_item(
     initial_custody_status = "awaiting_handover"
 
     if report_in.report_type == "found":
-        # Resolve destination department
         if dest_dept_id:
             dept_seed = next((d for d in DEPARTMENT_SEEDS if d["id"] == dest_dept_id), None)
             if dept_seed:
@@ -215,38 +655,21 @@ def report_item(
                 assigned_handler_id = dept_seed["handler_id"]
                 assigned_handler_name = dept_seed["handler_name"]
                 current_custody = dept_seed["id"]
-                storage_loc = f"{dept_seed['code']} Department Reception Desk"
+                storage_loc = report_in.storage_location or f"{dept_seed['code']} Department Reception Desk"
                 routing_reason = f"Explicit Finder Route: Handed over to {dest_dept_name}."
 
-        # Timetable fallback for classroom items if no department was selected
-        if not dest_dept_id and report_in.is_classroom and report_in.room_id:
-            try:
-                dt = datetime.strptime(report_in.found_date, "%Y-%m-%d")
-                day_name = DAY_NAME_MAP[dt.weekday()]
-            except Exception:
-                day_name = "Monday"
-
-            slot = resolve_slot_from_time(report_in.found_time)
-            tt_slot = db.query(TimetableSlot).filter(
-                TimetableSlot.room_id == report_in.room_id,
-                TimetableSlot.day == day_name,
-                TimetableSlot.slot_id == slot
-            ).first()
-
-            if tt_slot and tt_slot.advisor:
-                advisor_user = db.query(User).filter(
-                    (User.name == tt_slot.advisor) | (User.role == ROLE_CLASS_ADVISOR)
-                ).first()
+        if not assigned_handler_id and report_in.is_classroom and report_in.room_id:
+            tt_slot = db.query(TimetableSlot).filter(TimetableSlot.room_id == report_in.room_id).first()
+            advisor_val = getattr(tt_slot, "advisor", None) or getattr(tt_slot, "advisor_name", None) if tt_slot else None
+            if advisor_val:
+                advisor_user = db.query(User).filter(User.name == advisor_val).first()
                 if advisor_user:
                     assigned_handler_id = advisor_user.id
                     assigned_handler_name = advisor_user.name
                     current_custody = "class_advisor"
                     dest_dept_id = "dept-math"
                     dest_dept_name = "Department of Mathematics"
-                    routing_reason = (
-                        f"Classroom Timetable Match: {day_name} {slot} ({tt_slot.course_name}, "
-                        f"{tt_slot.class_section}). Automatically routed to Class Advisor {advisor_user.name}."
-                    )
+                    routing_reason = f"Classroom Timetable Match: Routed to Class Advisor {advisor_user.name}."
                     storage_loc = f"Class Advisor Office ({advisor_user.department})"
             elif tt_slot and tt_slot.faculty:
                 fac_user = db.query(User).filter(User.name == tt_slot.faculty).first()
@@ -259,7 +682,6 @@ def report_item(
                     routing_reason = f"Classroom Timetable Match: Routed to Course Faculty {fac_user.name}."
                     storage_loc = "Faculty Cabin Desk"
 
-        # Outdoor / Default Student Welfare fallback
         if not assigned_handler_id:
             welfare_user = db.query(User).filter(User.role == ROLE_LOST_PROPERTY_HANDLER).first()
             if welfare_user:
@@ -277,7 +699,7 @@ def report_item(
             initial_custody_status = "awaiting_handover"
 
     else:
-        # Report type == 'lost'
+        # Lost report
         initial_status = "active"
         initial_custody_status = "active"
         assigned_handler_name = "Campus Central Lost Property Network"
@@ -309,7 +731,8 @@ def report_item(
         private_identifying_details=report_in.private_identifying_details,
         associated_department=report_in.associated_department,
         custody_status=initial_custody_status,
-        verification_status="unverified"
+        verification_status="unverified",
+        owner_student_id=current_user.student_id if report_in.report_type == "lost" else None
     )
     db.add(item)
     db.commit()
@@ -334,11 +757,10 @@ def report_item(
         f"'{item.title}' at {item.location_found}. Destination: {dest_dept_name or 'Central'}."
     )
 
-    # Notify Designated Handler on new found report
     if item.report_type == "found" and assigned_handler_id:
         send_notification(
             db, assigned_handler_id,
-            f"New Found Item Routed to Your Department",
+            "New Found Item Routed to Your Department",
             f"A found item ('{item.title}') was routed to your desk at {dest_dept_name or 'Department'}. "
             f"Location found: {item.location_found}. Status: {initial_custody_status.upper()}.",
             category="lost_found", link="/lost-found"
@@ -350,57 +772,120 @@ def report_item(
     except Exception as e:
         print(f"Matching engine warning: {e}")
 
-    return item
+    # Return safe response based on user role
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        if item.report_type == "lost":
+            return StudentLostReportResponse(
+                id=item.id,
+                report_type="lost",
+                title=item.title,
+                category=item.category,
+                description=item.description,
+                location_found=item.location_found,
+                found_date=item.found_date,
+                found_time=item.found_time,
+                characteristics=item.characteristics,
+                status=item.status,
+                created_at=item.created_at
+            )
+        else:
+            return StudentFoundReportResponse(
+                id=item.id,
+                report_type="found",
+                title=item.title,
+                category=item.category,
+                description=item.description,
+                location_found=item.location_found,
+                found_date=item.found_date,
+                found_time=item.found_time,
+                destination_department_id=item.destination_department_id,
+                destination_department_name=item.destination_department_name,
+                storage_location=item.storage_location,
+                custody_status=item.custody_status,
+                status=item.status,
+                created_at=item.created_at,
+                assigned_handler_name=item.assigned_handler_name,
+                current_custody=item.current_custody,
+                routing_reason=item.routing_reason
+            )
+
+    return format_handler_case(item, db)
 
 @router.get("/{item_id}/matches")
-def get_potential_matches(item_id: str, db: Session = Depends(get_db)):
+def get_potential_matches(
+    item_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Returns transparent matching candidates with component score breakdowns
-    and confidence ratings for an active report.
+    Returns transparent matching candidates with component score breakdowns.
+    STRICT PRIVACY: Students receive 403 Forbidden. Only authorized department handlers within scope may access.
     """
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Students are not authorized to retrieve detailed match-candidate cards or factor breakdowns."
+        )
+
     target = db.query(LostFoundItem).filter(LostFoundItem.id == item_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    check_handler_scope(current_user, target, db)
+
     # Refresh matching candidates
     run_cross_department_matching(db, target)
 
-    is_lost = target.report_type == "lost"
-    query = db.query(ItemMatchCandidate)
-    if is_lost:
-        query = query.filter(ItemMatchCandidate.lost_report_id == target.id)
-    else:
-        query = query.filter(ItemMatchCandidate.found_report_id == target.id)
-
-    candidates = query.order_by(ItemMatchCandidate.match_score.desc()).all()
-
-    formatted_matches = []
-    for c in candidates:
-        breakdown = {}
-        if c.component_scores:
-            try:
-                breakdown = json.loads(c.component_scores)
-            except Exception:
-                pass
-
-        opp_item = c.found_item if is_lost else c.lost_item
-        if opp_item and opp_item.status not in ["returned", "recovered", "closed"]:
-            formatted_matches.append({
-                "candidate_id": c.id,
-                "item": opp_item,
-                "match_score": c.match_score,
-                "review_status": c.review_status,
-                "confidence_level": breakdown.get("confidence_level", "POSSIBLE" if c.match_score >= 65 else "LOW"),
-                "component_scores": breakdown,
-                "last_calculated_at": c.last_calculated_at
-            })
-
+    formatted = format_handler_case(target, db)
     return {
         "target_id": item_id,
         "report_type": target.report_type,
         "title": target.title,
-        "matches": formatted_matches
+        "matches": [
+            {
+                "candidate_id": m.candidate_id,
+                "item": {
+                    "id": m.found_item_id if target.report_type == "lost" else m.lost_item_id,
+                    "title": m.found_item_title if target.report_type == "lost" else m.lost_item_title,
+                    "category": m.found_item_category if target.report_type == "lost" else m.lost_item_category,
+                    "description": m.found_item_description if target.report_type == "lost" else m.lost_item_description,
+                    "location_found": m.found_item_location if target.report_type == "lost" else m.lost_item_location,
+                    "status": m.found_item_status if target.report_type == "lost" else m.lost_item_status,
+                },
+                "match_score": m.match_score,
+                "confidence_level": m.confidence_level,
+                "component_scores": m.component_scores,
+                "review_status": m.review_status,
+                "last_calculated_at": m.last_calculated_at,
+                "owner_name": m.lost_owner_name,
+                "owner_student_id": m.lost_owner_student_id,
+                "finder_name": m.found_finder_name,
+            }
+            for m in formatted.potential_matches
+        ]
     }
+
+@router.post("/candidates/{candidate_id}/review")
+def review_candidate(
+    candidate_id: str,
+    review_status: str = Query(..., description="'confirmed_match' or 'dismissed'"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Allows an authorized handler to confirm or dismiss a matching candidate."""
+    if current_user.role not in CAN_PROCESS_CLAIMS:
+        raise HTTPException(status_code=403, detail="Forbidden: Handlers only")
+
+    cand = db.query(ItemMatchCandidate).filter(ItemMatchCandidate.id == candidate_id).first()
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if cand.found_item:
+        check_handler_scope(current_user, cand.found_item, db)
+
+    cand.review_status = review_status
+    db.commit()
+    return {"message": f"Candidate status updated to {review_status}", "candidate_id": candidate_id}
 
 @router.post("/{item_id}/in-person-verification", response_model=LostFoundResponse)
 def in_person_verification(
@@ -410,10 +895,12 @@ def in_person_verification(
     db: Session = Depends(get_db)
 ):
     """
-    Ownership Verification & Handover (Section 7):
-    Department handler verifies claimant identity in person using their valid College ID card,
-    approves release, records physical handover details, updates status to RETURNED/RECOVERED,
-    and removes closed items from active matching.
+    Ownership Verification and Collection Protocol (Section 8):
+    1. Claimant presents valid physical College ID card in person.
+    2. Handler checks claimant's institutional identity against the registered owner record.
+    3. Handler verifies item-specific details.
+    4. If passes: marks found item RETURNED, associated lost report RECOVERED, sends collection confirmation.
+    5. If fails: leaves item in custody, records verification failure.
     """
     if current_user.role not in CAN_PROCESS_CLAIMS:
         raise HTTPException(
@@ -425,9 +912,31 @@ def in_person_verification(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    check_handler_scope(current_user, item, db)
+
     if item.status in ["returned", "closed"]:
         raise HTTPException(status_code=400, detail="Item has already been returned or closed.")
 
+    is_passed = getattr(verif_in, "verification_outcome", "passed") in ["passed", "id_verified"]
+
+    if not is_passed:
+        # Verification failed - leave in custody
+        item.verification_status = "verification_failed"
+        log = CustodyLog(
+            item_id=item.id,
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            action="verification_failed",
+            from_custodian=item.current_custody,
+            to_custodian=item.current_custody,
+            notes=f"ID verification failed or inconclusive for claimant {verif_in.claimant_name} (ID: {verif_in.claimant_college_id}). Item retained in custody."
+        )
+        db.add(log)
+        db.commit()
+        db.refresh(item)
+        return format_handler_case(item, db)
+
+    # Verification passed
     now = datetime.utcnow()
     item.verification_status = "id_verified"
     item.verified_by_id = current_user.id
@@ -444,17 +953,43 @@ def in_person_verification(
         f"Handover notes: {verif_in.handover_notes or 'Released in good condition'}."
     )
 
-    # If linked to a matching lost-item report, update the lost-item report to RECOVERED
-    match_pairs = db.query(ItemMatchCandidate).filter(
-        ItemMatchCandidate.found_report_id == item.id
-    ).all()
-    for mp in match_pairs:
-        if mp.lost_item and mp.lost_item.status in ["active", "potential_match", "claim_under_review"]:
-            mp.lost_item.status = "recovered"
-            mp.lost_item.custody_status = "recovered"
-            mp.review_status = "confirmed_match"
+    # Link associated lost report and mark RECOVERED
+    associated_lost = None
+    if getattr(verif_in, "associated_lost_report_id", None):
+        associated_lost = db.query(LostFoundItem).filter(LostFoundItem.id == verif_in.associated_lost_report_id).first()
 
-    # Custody log
+    if not associated_lost:
+        # Search candidate lost reports
+        candidates = db.query(ItemMatchCandidate).filter(
+            ItemMatchCandidate.found_report_id == item.id
+        ).order_by(ItemMatchCandidate.match_score.desc()).all()
+        for cand in candidates:
+            if cand.lost_item and cand.lost_item.status in ["active", "potential_match", "claim_under_review"]:
+                associated_lost = cand.lost_item
+                cand.review_status = "confirmed_match"
+                break
+
+    if associated_lost and associated_lost.status not in ["returned", "recovered", "closed"]:
+        associated_lost.status = "recovered"
+        associated_lost.custody_status = "recovered"
+        associated_lost.handover_timestamp = now
+        associated_lost.handover_recipient_name = verif_in.claimant_name
+        associated_lost.claimant_college_id = verif_in.claimant_college_id
+
+        # Send collection confirmation to the student who reported lost item
+        send_notification(
+            db=db,
+            recipient_id=associated_lost.finder_id,
+            title="Collection Confirmation",
+            message=(
+                f"Your lost item '{associated_lost.title}' has been successfully verified with your College ID and handed over at {item.destination_department_name or 'Department Office'}. "
+                f"The case is now closed."
+            ),
+            category="lost_found",
+            link="/lost-found"
+        )
+
+    # Log custody handover
     log = CustodyLog(
         item_id=item.id,
         actor_id=current_user.id,
@@ -475,15 +1010,7 @@ def in_person_verification(
         f"Item '{item.title}' returned after College ID verification: {verif_in.claimant_college_id} ({verif_in.claimant_name})."
     )
 
-    # Send Collection Confirmation to Finder / Claimant
-    send_notification(
-        db, item.finder_id,
-        f"Item Collection Confirmation: '{item.title}'",
-        f"Your report for '{item.title}' has been successfully closed. Physical handover verified in-person by {current_user.name}.",
-        category="lost_found", link="/lost-found"
-    )
-
-    return item
+    return format_handler_case(item, db)
 
 @router.post("/{item_id}/receive-handover", response_model=LostFoundResponse)
 def receive_physical_handover(
@@ -500,7 +1027,8 @@ def receive_physical_handover(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    old_status = item.custody_status
+    check_handler_scope(current_user, item, db)
+
     item.status = "in_custody"
     item.custody_status = "in_custody"
     if storage_location:
@@ -521,14 +1049,14 @@ def receive_physical_handover(
 
     record_audit(
         db, current_user.id, current_user.name, current_user.role,
-        "LOST_FOUND_CUSTODY_ACCEPTED", "LOST_ITEM", item.id,
-        f"Accepted into physical custody at {item.storage_location}."
+        "LOST_FOUND_CUSTODY_RECEIVED", "LOST_ITEM", item.id,
+        f"Item '{item.title}' received into custody by {current_user.name}."
     )
 
-    return item
+    return format_handler_case(item, db)
 
 @router.post("/{item_id}/transfer", response_model=LostFoundResponse)
-def transfer_item_custody(
+def transfer_custody(
     item_id: str,
     transfer_in: CustodyTransferRequest,
     current_user: User = Depends(get_current_user),
@@ -542,17 +1070,14 @@ def transfer_item_custody(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    target_dept = next((d for d in DEPARTMENT_SEEDS if d["id"] == transfer_in.new_department_id), None)
-    if not target_dept:
-        raise HTTPException(status_code=400, detail="Invalid destination department ID")
+    check_handler_scope(current_user, item, db)
 
-    old_custody = item.assigned_handler_name
-    item.destination_department_id = target_dept["id"]
-    item.destination_department_name = target_dept["department_name"]
-    item.assigned_handler_id = target_dept["handler_id"]
-    item.assigned_handler_name = target_dept["handler_name"]
-    item.current_custody = target_dept["id"]
-    item.status = "transferred"
+    target_dept = db.query(Department).filter(Department.id == transfer_in.new_department_id).first()
+    target_name = target_dept.name if target_dept else transfer_in.new_department_id
+
+    old_custody = item.destination_department_name or item.current_custody
+    item.destination_department_id = transfer_in.new_department_id
+    item.destination_department_name = target_name
     item.custody_status = "transferred"
     if transfer_in.new_storage_location:
         item.storage_location = transfer_in.new_storage_location
@@ -563,8 +1088,8 @@ def transfer_item_custody(
         actor_name=current_user.name,
         action="custody_transferred",
         from_custodian=old_custody,
-        to_custodian=target_dept["handler_name"],
-        notes=f"Transferred to {target_dept['department_name']}. Reason: {transfer_in.transfer_reason}"
+        to_custodian=target_name,
+        notes=f"Custody transferred. Reason: {transfer_in.transfer_reason}."
     )
     db.add(log)
     db.commit()
@@ -572,13 +1097,12 @@ def transfer_item_custody(
 
     record_audit(
         db, current_user.id, current_user.name, current_user.role,
-        "LOST_FOUND_TRANSFERRED", "LOST_ITEM", item.id,
-        f"Transferred from {old_custody} to {target_dept['department_name']}: {transfer_in.transfer_reason}"
+        "LOST_FOUND_CUSTODY_TRANSFERRED", "LOST_ITEM", item.id,
+        f"Transferred from {old_custody} to {target_name}. Reason: {transfer_in.transfer_reason}."
     )
 
-    return item
+    return format_handler_case(item, db)
 
-# Existing claim and review endpoints for backward compatibility
 @router.post("/{item_id}/claim", response_model=ItemClaimResponse)
 def submit_claim(
     item_id: str,
@@ -586,14 +1110,13 @@ def submit_claim(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Files a proof of ownership claim on a found item."""
     item = db.query(LostFoundItem).filter(LostFoundItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if item.status in ["returned", "closed"]:
-        raise HTTPException(status_code=400, detail="Item has already been returned or closed")
 
     claim = ItemClaim(
-        item_id=item.id,
+        item_id=item_id,
         claimant_id=current_user.id,
         claimant_name=current_user.name,
         proof_description=claim_in.proof_description,
@@ -603,33 +1126,8 @@ def submit_claim(
     db.add(claim)
     item.status = "claim_pending"
     item.custody_status = "claim_pending"
-
-    log = CustodyLog(
-        item_id=item.id,
-        actor_id=current_user.id,
-        actor_name=current_user.name,
-        action="claim_filed",
-        from_custodian=item.current_custody,
-        to_custodian=item.current_custody,
-        notes=f"Claim submitted by {current_user.name}."
-    )
-    db.add(log)
     db.commit()
     db.refresh(claim)
-
-    record_audit(
-        db, current_user.id, current_user.name, current_user.role,
-        "CLAIM_SUBMITTED", "CLAIM", claim.id,
-        f"Claim filed for '{item.title}' by {current_user.name}"
-    )
-
-    if item.assigned_handler_id:
-        send_notification(
-            db, item.assigned_handler_id, "New Claim Filed on Item",
-            f"{current_user.name} submitted a claim for '{item.title}' in your custody.",
-            category="lost_found", link="/lost-found"
-        )
-
     return claim
 
 @router.post("/claims/{claim_id}/review", response_model=ItemClaimResponse)
@@ -639,53 +1137,24 @@ def review_claim(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Reviews an online ownership claim (Approve/Reject)."""
     if current_user.role not in CAN_PROCESS_CLAIMS:
-        raise HTTPException(status_code=403, detail="Not authorized to verify claims")
+        raise HTTPException(status_code=403, detail="Not authorized to review claims")
 
     claim = db.query(ItemClaim).filter(ItemClaim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
 
-    if claim.claimant_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conflict of Interest: Users are prohibited from approving their own item claims."
-        )
+    item = claim.item
+    check_handler_scope(current_user, item, db)
 
     claim.status = review_in.decision
     claim.handler_notes = review_in.handler_notes
-
-    item = claim.item
-    if review_in.decision == "approved":
-        item.status = "claim_pending"
-    elif review_in.decision == "rejected":
+    if review_in.decision == "rejected":
         item.status = "in_custody"
-
-    log = CustodyLog(
-        item_id=item.id,
-        actor_id=current_user.id,
-        actor_name=current_user.name,
-        action=f"claim_{review_in.decision}",
-        from_custodian=item.current_custody,
-        to_custodian=item.current_custody,
-        notes=f"Claim decision: {review_in.decision}. Notes: {review_in.handler_notes or 'None'}"
-    )
-    db.add(log)
+        item.custody_status = "in_custody"
     db.commit()
     db.refresh(claim)
-
-    record_audit(
-        db, current_user.id, current_user.name, current_user.role,
-        f"CLAIM_{review_in.decision.upper()}", "CLAIM", claim.id,
-        f"Handler decision by {current_user.name}"
-    )
-
-    send_notification(
-        db, claim.claimant_id, f"Claim Update: {review_in.decision.capitalize()}",
-        f"Your claim for '{item.title}' was updated to '{review_in.decision}'. Note: {review_in.handler_notes or 'Please see your dashboard.'}",
-        category="lost_found", link="/lost-found"
-    )
-
     return claim
 
 @router.post("/{item_id}/handover", response_model=LostFoundResponse)
@@ -695,23 +1164,28 @@ def record_handover(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Records a general custody transition or closure."""
     if current_user.role not in CAN_PROCESS_CLAIMS:
-        raise HTTPException(status_code=403, detail="Not authorized to record custody handovers")
+        raise HTTPException(status_code=403, detail="Not authorized to log handovers")
 
     item = db.query(LostFoundItem).filter(LostFoundItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    check_handler_scope(current_user, item, db)
+
     old_custody = item.current_custody
     item.status = handover_in.new_custody
     item.custody_status = handover_in.new_custody
+    item.current_custody = handover_in.new_custody
+    item.handover_notes = handover_in.handover_notes
     if handover_in.storage_location:
         item.storage_location = handover_in.storage_location
-    if handover_in.handover_notes:
-        item.handover_notes = handover_in.handover_notes
 
+    now = datetime.utcnow()
     if handover_in.new_custody == "returned":
-        item.return_date = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+        item.return_date = now.strftime("%Y-%m-%d %H:%M")
+        item.handover_timestamp = now
 
     log = CustodyLog(
         item_id=item.id,
@@ -720,16 +1194,10 @@ def record_handover(
         action=handover_in.new_custody,
         from_custodian=old_custody,
         to_custodian=handover_in.new_custody,
-        notes=handover_in.handover_notes or f"Custody updated to {handover_in.new_custody}"
+        notes=handover_in.handover_notes or f"Custody updated to {handover_in.new_custody}.",
+        timestamp=now
     )
     db.add(log)
     db.commit()
     db.refresh(item)
-
-    record_audit(
-        db, current_user.id, current_user.name, current_user.role,
-        f"ITEM_HANDOVER_{handover_in.new_custody.upper()}", "LOST_ITEM", item.id,
-        f"Status: {handover_in.new_custody}. Handover notes: {handover_in.handover_notes}"
-    )
-
-    return item
+    return format_handler_case(item, db)

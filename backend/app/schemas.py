@@ -357,8 +357,11 @@ class ClaimReview(BaseModel):
 class InPersonVerificationRequest(BaseModel):
     claimant_college_id: str
     claimant_name: str
+    verification_outcome: Optional[str] = "passed"  # 'passed' or 'failed'
     verification_notes: Optional[str] = None
     handover_notes: Optional[str] = None
+    decision_reason: Optional[str] = None
+    associated_lost_report_id: Optional[str] = None
 
 class CustodyTransferRequest(BaseModel):
     new_department_id: str
@@ -406,6 +409,90 @@ class MatchCandidateResponse(BaseModel):
     found_item: Optional[dict] = None
     model_config = ConfigDict(from_attributes=True)
 
+class StudentLostReportResponse(BaseModel):
+    id: str
+    report_type: str = "lost"
+    title: str
+    category: str
+    description: str
+    location_found: str
+    found_date: str
+    found_time: Optional[str] = None
+    characteristics: Optional[str] = None
+    status: str
+    created_at: datetime
+    has_potential_match: bool = False
+    potential_match_dept: Optional[str] = None
+    collection_instructions: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class StudentFoundReportResponse(BaseModel):
+    id: str
+    report_type: str = "found"
+    title: str
+    category: str
+    description: str
+    location_found: str
+    found_date: str
+    found_time: Optional[str] = None
+    destination_department_id: Optional[str] = None
+    destination_department_name: Optional[str] = None
+    storage_location: Optional[str] = None
+    custody_status: Optional[str] = None
+    status: str
+    created_at: datetime
+    assigned_handler_name: Optional[str] = None
+    current_custody: Optional[str] = None
+    routing_reason: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class StudentPublicFoundResponse(BaseModel):
+    id: str
+    category: str
+    title: str
+    location_found: str
+    found_date: str
+    destination_department_name: Optional[str] = None
+    custody_status: Optional[str] = None
+    status: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class HandlerMatchCandidateDetail(BaseModel):
+    candidate_id: str
+    lost_item_id: str
+    lost_item_title: str
+    lost_item_category: str
+    lost_item_description: str
+    lost_item_location: str
+    lost_item_characteristics: Optional[str] = None
+    lost_item_private_details: Optional[str] = None
+    lost_owner_name: str
+    lost_owner_student_id: Optional[str] = None
+    lost_owner_email: Optional[str] = None
+    lost_item_status: str
+
+    found_item_id: str
+    found_item_title: str
+    found_item_category: str
+    found_item_description: str
+    found_item_location: str
+    found_item_characteristics: Optional[str] = None
+    found_destination_department: Optional[str] = None
+    found_storage_location: Optional[str] = None
+    found_custody_status: Optional[str] = None
+    found_finder_name: Optional[str] = None
+    found_finder_id: Optional[str] = None
+    found_item_status: str
+    found_photo_url: Optional[str] = None
+
+    match_score: float
+    confidence_level: str
+    component_scores: dict = {}
+    review_status: str
+    last_calculated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
 class LostFoundResponse(BaseModel):
     id: str
     report_type: str
@@ -413,13 +500,14 @@ class LostFoundResponse(BaseModel):
     category: str
     description: str
     location_found: str
-    is_classroom: bool
+    is_classroom: bool = False
     room_id: Optional[str] = None
     found_date: str
     found_time: Optional[str] = None
     photo_url: Optional[str] = None
     finder_name: str
     finder_id: Optional[str] = None
+    finder_email: Optional[str] = None
     current_custody: str
     storage_location: str
     assigned_handler_name: str
@@ -434,6 +522,7 @@ class LostFoundResponse(BaseModel):
     destination_department_id: Optional[str] = None
     destination_department_name: Optional[str] = None
     characteristics: Optional[str] = None
+    private_identifying_details: Optional[str] = None
     custody_status: Optional[str] = None
     verification_status: Optional[str] = None
     verified_by_name: Optional[str] = None
@@ -441,8 +530,14 @@ class LostFoundResponse(BaseModel):
     handover_recipient_name: Optional[str] = None
     is_synthetic: Optional[bool] = False
 
+    # Owner details (for handlers viewing lost items)
+    owner_name: Optional[str] = None
+    owner_student_id: Optional[str] = None
+    owner_email: Optional[str] = None
+
     claims: List[ItemClaimResponse] = []
     custody_logs: List[CustodyLogResponse] = []
+    potential_matches: List[HandlerMatchCandidateDetail] = []
     model_config = ConfigDict(from_attributes=True)
 
 # Notifications

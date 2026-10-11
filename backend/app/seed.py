@@ -30,7 +30,10 @@ def ensure_columns(target_engine):
             ("lost_found_items", "claimant_college_id", "TEXT"),
             ("lost_found_items", "handover_recipient_name", "TEXT"),
             ("lost_found_items", "handover_timestamp", "DATETIME"),
+            ("lost_found_items", "owner_student_id", "TEXT"),
+            ("lost_found_items", "associated_lost_report_id", "TEXT"),
             ("lost_found_items", "is_synthetic", "BOOLEAN DEFAULT 0"),
+            ("users", "student_id", "TEXT"),
         ]:
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
@@ -100,6 +103,7 @@ def seed_database(db: SessionLocal = None):
             role="student",
             department="CSE",
             class_section="CSE, V A",
+            student_id="CB.EN.U4CSE22001",
             password_hash=pwd
         ),
         User(
@@ -109,6 +113,7 @@ def seed_database(db: SessionLocal = None):
             role="student",
             department="CSE",
             class_section="CSE, V B",
+            student_id="CB.EN.U4CSE22045",
             password_hash=pwd
         ),
         User(
@@ -118,6 +123,7 @@ def seed_database(db: SessionLocal = None):
             role="class_rep",
             department="Int. M.Sc Data Science",
             class_section="Int. M.Sc Data Science, VII B",
+            student_id="CB.EN.U4DS22018",
             password_hash=pwd
         ),
         User(

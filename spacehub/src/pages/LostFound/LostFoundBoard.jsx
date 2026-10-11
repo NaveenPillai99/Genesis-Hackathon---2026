@@ -35,11 +35,14 @@ export const DEFAULT_DEPARTMENTS = [
 
 export default function LostFoundBoard() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState('browse')
+  const isHandler = CAN_PROCESS_LOST_FOUND_CLAIMS.has(user?.role)
+  const [activeTab, setActiveTab] = useState(isHandler ? 'custody' : 'browse')
   const [items, setItems] = useState([])
   const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS)
   const [rooms, setRooms] = useState([])
   const [timetable, setTimetable] = useState([])
+  const [myLostReports, setMyLostReports] = useState([])
+  const [handlerCases, setHandlerCases] = useState([])
   const [loading, setLoading] = useState(true)
 
   // Filters
@@ -81,16 +84,14 @@ export default function LostFoundBoard() {
     submitting: false,
   })
 
-  // Match details drawer / modal
+  // Match details drawer / modal (Handler only)
   const [matchDetailsModal, setMatchDetailsModal] = useState({
     isOpen: false,
     match: null,
   })
 
-  // Live match candidate pairs loaded from backend
+  // Live match candidate pairs loaded from backend (Handler only)
   const [backendMatches, setBackendMatches] = useState([])
-
-  const isHandler = CAN_PROCESS_LOST_FOUND_CLAIMS.has(user?.role)
 
   function normalizeItem(i) {
     return {
@@ -108,6 +109,7 @@ export default function LostFoundBoard() {
       photoUrl: i.photo_url || i.photoUrl || null,
       finderId: i.finder_id || i.finderId || '',
       finderName: i.finder_name || i.finderName || '',
+      finderEmail: i.finder_email || i.finderEmail || '',
       currentCustody: i.current_custody || i.currentCustody || '',
       storageLocation: i.storage_location || i.storageLocation || '',
       assignedHandlerId: i.assigned_handler_id || i.assignedHandlerId || '',
@@ -124,6 +126,10 @@ export default function LostFoundBoard() {
       claimantCollegeId: i.claimant_college_id || i.claimantCollegeId || '',
       handoverRecipientName: i.handover_recipient_name || i.handoverRecipientName || '',
       returnDate: i.return_date || i.returnDate || null,
+      ownerName: i.owner_name || i.ownerName || null,
+      ownerStudentId: i.owner_student_id || i.ownerStudentId || null,
+      ownerEmail: i.owner_email || i.ownerEmail || null,
+      potentialMatches: i.potential_matches || i.potentialMatches || [],
       claims: (i.claims || []).map((c) => ({
         ...c,
         id: c.id,
@@ -152,7 +158,7 @@ export default function LostFoundBoard() {
         console.warn('Departments fetch fallback:', err)
       }
 
-      // 2. Fetch items from FastAPI backend or fallback
+      // 2. Fetch items from FastAPI backend (sanitized for students, scoped for handlers)
       let allItems = []
       try {
         const liveItems = await api.getLostFoundItems()
@@ -166,6 +172,28 @@ export default function LostFoundBoard() {
       }
       setItems(allItems)
 
+      // Fetch My Lost Items (student private dashboard)
+      try {
+        const myLost = await api.getMyLostItems()
+        if (Array.isArray(myLost)) {
+          setMyLostReports(myLost)
+        }
+      } catch (err) {
+        console.warn('Failed to load my lost reports:', err)
+      }
+
+      // Fetch Handler Scoped Cases if authorized handler
+      if (isHandler) {
+        try {
+          const cases = await api.getHandlerCases()
+          if (Array.isArray(cases)) {
+            setHandlerCases(cases.map(normalizeItem))
+          }
+        } catch (err) {
+          console.warn('Failed to load handler cases:', err)
+        }
+      }
+
       // 3. Fetch rooms and timetable for classroom resolution
       const [allRooms, allTimetable] = await Promise.all([
         listRooms(),
@@ -174,8 +202,12 @@ export default function LostFoundBoard() {
       setRooms((allRooms || []).filter((r) => r.type === 'classroom'))
       setTimetable(allTimetable || [])
 
-      // 4. Fetch live matches from matching candidates
-      await loadLiveMatches(allItems)
+      // 4. Fetch live matches from matching candidates (HANDLERS ONLY)
+      if (isHandler) {
+        await loadLiveMatches(allItems)
+      } else {
+        setBackendMatches([])
+      }
     } catch (err) {
       console.error('Failed to load Lost & Found data:', err)
     } finally {
@@ -184,7 +216,12 @@ export default function LostFoundBoard() {
   }
 
   async function loadLiveMatches(loadedItems) {
-    const lostReports = loadedItems.filter((i) => i.reportType === 'lost' && i.status !== 'returned' && i.status !== 'closed')
+    if (!isHandler) {
+      setBackendMatches([])
+      return
+    }
+
+    const lostReports = loadedItems.filter((i) => i.reportType === 'lost' && i.status !== 'returned' && i.status !== 'closed' && i.status !== 'recovered')
     const matchesCollected = []
     const seenPairs = new Set()
 
@@ -214,58 +251,16 @@ export default function LostFoundBoard() {
       }
     }
 
-    // If backend candidates exist, use them; otherwise fallback to synthetic algorithm
-    if (matchesCollected.length > 0) {
-      setBackendMatches(matchesCollected.sort((a, b) => b.matchScore - a.matchScore))
-    } else {
-      // Client-side fallback matching
-      const foundReports = loadedItems.filter((i) => i.reportType === 'found' && i.status !== 'returned' && i.status !== 'closed')
-      const fallbackPairs = []
-      lostReports.forEach((lost) => {
-        foundReports.forEach((found) => {
-          let score = 0
-          const reasons = []
-          if (lost.category === found.category) {
-            score += 15
-            reasons.push('Category alignment (+15%)')
-          }
-          const lostWords = new Set(lost.description?.toLowerCase().split(/\s+/) || [])
-          const foundWords = new Set(found.description?.toLowerCase().split(/\s+/) || [])
-          const overlap = [...lostWords].filter((w) => w.length > 3 && foundWords.has(w))
-          if (overlap.length > 0) {
-            const textScore = Math.min(30, overlap.length * 10)
-            score += textScore
-            reasons.push(`Keywords matched (+${textScore}%)`)
-          }
-          if (
-            lost.locationFound &&
-            found.locationFound &&
-            (lost.locationFound.toLowerCase().includes(found.locationFound.toLowerCase()) ||
-              found.locationFound.toLowerCase().includes(lost.locationFound.toLowerCase()))
-          ) {
-            score += 15
-            reasons.push('Location compatibility (+15%)')
-          }
-          if (score >= 40) {
-            fallbackPairs.push({
-              candidateId: `${lost.id}-${found.id}`,
-              lostItem: lost,
-              foundItem: found,
-              matchScore: Math.min(95, score + 28),
-              confidenceLevel: score + 28 >= 85 ? 'HIGH' : score + 28 >= 65 ? 'POSSIBLE' : 'LOW',
-              componentScores: {
-                category_score: 15,
-                text_similarity_score: 25,
-                characteristics_score: 18,
-                location_score: 15,
-                time_proximity_score: 15,
-                normalized_score: Math.min(95, score + 28),
-              },
-            })
-          }
-        })
-      })
-      setBackendMatches(fallbackPairs.sort((a, b) => b.matchScore - a.matchScore))
+  }
+
+  async function handleCancelLostReport(reportId) {
+    if (!confirm('Are you sure you want to cancel this lost report?')) return
+    try {
+      await api.cancelLostReport(reportId)
+      alert('Lost item report has been cancelled successfully.')
+      loadData()
+    } catch (err) {
+      alert(err.message || 'Failed to cancel report')
     }
   }
 
@@ -290,16 +285,16 @@ export default function LostFoundBoard() {
     return matchesCat && matchesDept && matchesStatus && matchesSearch
   })
 
-  // Custodian items (Section 6: Handlers & Student Welfare scoped view)
-  const custodianItems = items.filter((i) => {
+  // Custodian items (Section 6 & 7: Handlers & Student Welfare scoped view)
+  const custodianItems = handlerCases.length > 0 ? handlerCases : items.filter((i) => {
     if (user?.role === ROLES.LOST_PROPERTY_HANDLER || user?.role === ROLES.SYS_ADMIN || user?.role === ROLES.RESOURCE_ADMIN) {
       return true
     }
     const userDept = (user?.department || '').toUpperCase()
-    if (userDept.includes('CS') && (i.destinationDepartmentId === 'dept-cse' || i.assignedHandlerId === user?.id)) return true
     if (userDept.includes('MATH') && (i.destinationDepartmentId === 'dept-math' || i.assignedHandlerId === user?.id)) return true
-    if (userDept.includes('EC') && (i.destinationDepartmentId === 'dept-ece' || i.assignedHandlerId === user?.id)) return true
-    if (userDept.includes('MECH') && (i.destinationDepartmentId === 'dept-mech' || i.assignedHandlerId === user?.id)) return true
+    if ((userDept.includes('COMPUTER') || userDept.includes('CSE') || userDept === 'CS') && (i.destinationDepartmentId === 'dept-cse' || i.assignedHandlerId === user?.id)) return true
+    if ((userDept.includes('ELECTRONIC') || userDept.includes('ECE')) && (i.destinationDepartmentId === 'dept-ece' || i.assignedHandlerId === user?.id)) return true
+    if ((userDept.includes('MECHANICAL') || userDept.includes('MECH')) && (i.destinationDepartmentId === 'dept-mech' || i.assignedHandlerId === user?.id)) return true
     return i.assignedHandlerId === user?.id
   })
 
@@ -332,14 +327,21 @@ export default function LostFoundBoard() {
 
     setVerificationModal((prev) => ({ ...prev, submitting: true }))
     try {
+      const isPass = verificationModal.verificationOutcome === 'id_verified' || verificationModal.verificationOutcome === 'passed'
       await api.verifyItemInPerson(verificationModal.item.id, {
         claimant_college_id: verificationModal.claimantCollegeId,
         claimant_name: verificationModal.claimantName,
-        verification_notes: verificationModal.notes || `In-person verification conducted by ${user.name} at ${verificationModal.item.destinationDepartmentName || 'Department'}. Valid College ID verified.`,
-        decision_reason: verificationModal.decisionReason || 'Physical inspection and College ID card verification confirmed ownership.',
+        verification_outcome: isPass ? 'passed' : 'failed',
+        verification_notes: verificationModal.notes || `In-person verification conducted by ${user.name} at ${verificationModal.item.destinationDepartmentName || 'Department'}. Valid College ID checked.`,
+        decision_reason: verificationModal.decisionReason || (isPass ? 'Physical inspection and College ID card verification confirmed ownership.' : 'Verification failed or claimant identity mismatch.'),
       })
 
-      alert(`Success! Ownership verified using College ID (${verificationModal.claimantCollegeId}). Physical item released to ${verificationModal.claimantName}. Report closed and removed from active matching.`)
+      if (isPass) {
+        alert(`Success! Ownership verified using College ID (${verificationModal.claimantCollegeId}). Physical item released to ${verificationModal.claimantName}. Associated lost report marked RECOVERED.`)
+      } else {
+        alert(`Verification failed! Item retained in department custody. Record logged for audit review.`)
+      }
+
       setVerificationModal({
         isOpen: false,
         item: null,
@@ -447,27 +449,87 @@ export default function LostFoundBoard() {
             </div>
           </div>
           <button
-            onClick={() => setActiveTab('matches')}
+            onClick={() => setActiveTab(isHandler ? 'matches' : 'my-lost')}
             className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-xs transition-colors"
           >
-            View Live Match ➔
+            {isHandler ? 'View Live Match Candidates ➔' : 'View My Lost Reports ➔'}
           </button>
         </div>
       </div>
 
       {/* Navigation Tabs */}
       <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-1 text-sm font-semibold scrollbar-none">
-        <button
-          onClick={() => setActiveTab('browse')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
-            activeTab === 'browse'
-              ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <span>📦</span>
-          <span>Browse Found Items ({foundItems.length})</span>
-        </button>
+        {isHandler ? (
+          <>
+            <button
+              onClick={() => setActiveTab('custody')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+                activeTab === 'custody'
+                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>🛡️</span>
+              <span>Department Case Console ({custodianItems.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('matches')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+                activeTab === 'matches'
+                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>🎯</span>
+              <span>Match Candidates &amp; Factor Breakdown ({backendMatches.length})</span>
+              {backendMatches.some((m) => m.confidenceLevel === 'HIGH') && (
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('browse')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+                activeTab === 'browse'
+                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>📦</span>
+              <span>All Public Notices ({foundItems.length})</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setActiveTab('browse')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+                activeTab === 'browse'
+                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>📦</span>
+              <span>Browse Found Items ({foundItems.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('my-lost')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
+                activeTab === 'my-lost'
+                  ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>📋</span>
+              <span>My Lost Items ({myLostReports.length})</span>
+              {myLostReports.some((r) => r.has_potential_match || r.status === 'potential_match') && (
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+              )}
+            </button>
+          </>
+        )}
 
         <button
           onClick={() => setActiveTab('report-found')}
@@ -492,35 +554,6 @@ export default function LostFoundBoard() {
           <span>🔍</span>
           <span>Report Lost Item (Cross-Dept)</span>
         </button>
-
-        <button
-          onClick={() => setActiveTab('matches')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
-            activeTab === 'matches'
-              ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-          }`}
-        >
-          <span>🎯</span>
-          <span>Smart Matches ({backendMatches.length})</span>
-          {backendMatches.some((m) => m.confidenceLevel === 'HIGH') && (
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          )}
-        </button>
-
-        {isHandler && (
-          <button
-            onClick={() => setActiveTab('custody')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-xl transition-colors whitespace-nowrap ${
-              activeTab === 'custody'
-                ? 'border-b-2 border-brand-600 text-brand-700 bg-brand-50/50'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <span>🛡️</span>
-            <span>Department Custodian Panel ({custodianItems.length})</span>
-          </button>
-        )}
       </div>
 
       {/* ---------------- TAB 1: BROWSE FOUND ITEMS ---------------- */}
@@ -689,6 +722,137 @@ export default function LostFoundBoard() {
         </div>
       )}
 
+      {/* ---------------- TAB 1.5: MY LOST ITEMS (STUDENT PRIVATE DASHBOARD) ---------------- */}
+      {activeTab === 'my-lost' && (
+        <div className="space-y-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📋</span>
+                <h2 className="text-lg font-bold text-slate-900">My Lost Item Reports</h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Private dashboard showing only your submitted lost item reports and verified match notifications.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('report-lost')}
+              className="btn-primary text-xs !py-1.5 !px-3 self-start md:self-auto"
+            >
+              + Report Another Lost Item
+            </button>
+          </div>
+
+          {myLostReports.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-400">
+              <span className="text-4xl block mb-2">🔍</span>
+              You have not submitted any active lost item reports.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {myLostReports.map((report) => {
+                const isCancelled = report.status === 'cancelled'
+                const isRecovered = report.status === 'recovered' || report.status === 'returned'
+                const hasMatch = report.has_potential_match || report.status === 'potential_match'
+
+                const statusTone = isRecovered
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : isCancelled
+                  ? 'bg-slate-100 text-slate-600 border-slate-200'
+                  : hasMatch
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-blue-50 text-blue-800 border-blue-200'
+
+                return (
+                  <div
+                    key={report.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4 flex flex-col justify-between hover:shadow-md transition-shadow"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="text-xs text-slate-400 font-medium">
+                            Reported on {report.found_date || (report.created_at ? new Date(report.created_at).toLocaleDateString() : 'Recent')}
+                          </span>
+                          <h3 className="font-bold text-slate-900 text-base mt-0.5">
+                            {report.title}
+                          </h3>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase border ${statusTone}`}>
+                          {hasMatch && !isRecovered && !isCancelled
+                            ? 'Potential match identified'
+                            : report.status?.replace('_', ' ')}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {report.description}
+                      </p>
+
+                      {report.location_found && (
+                        <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <span>📍</span>
+                          <span>Last known location: <strong>{report.location_found}</strong></span>
+                        </div>
+                      )}
+
+                      {/* Safe Student Potential Match Notification (Section 5 & 6) */}
+                      {hasMatch && !isRecovered && !isCancelled && (
+                        <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 text-xs text-amber-950 space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                            <span>🔔</span>
+                            <span>Possible Lost Item Match</span>
+                          </div>
+                          <p className="text-amber-900 text-[11px] leading-relaxed">
+                            A found item with a similar description to your lost-item report has been submitted to the{' '}
+                            <strong>{report.potential_match_dept || 'Department Office'}</strong>.
+                          </p>
+                          <p className="text-amber-800 text-[11px] leading-relaxed">
+                            <strong>Next step:</strong> Please visit the <strong>{report.potential_match_dept || 'department'}</strong> office with your{' '}
+                            <strong>college ID card</strong> to verify ownership and collect the item if it is confirmed to be yours.
+                          </p>
+                          <div className="text-[10px] text-amber-800/80 bg-amber-100/70 p-2 rounded-lg font-medium">
+                            The department will verify your identity before releasing the item.
+                          </div>
+                        </div>
+                      )}
+
+                      {isRecovered && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 flex items-center gap-2">
+                          <span className="text-base">✓</span>
+                          <span>Item ownership successfully verified and collected. Case closed.</span>
+                        </div>
+                      )}
+
+                      {isCancelled && (
+                        <div className="rounded-xl bg-slate-100 border border-slate-200 p-2.5 text-xs text-slate-600">
+                          This lost report was cancelled by you and excluded from active matching.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    {!isRecovered && !isCancelled && (
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400">
+                          Active scanning across all configured departments
+                        </span>
+                        <button
+                          onClick={() => handleCancelLostReport(report.id)}
+                          className="text-xs text-red-600 hover:text-red-800 font-semibold px-2.5 py-1 rounded-lg hover:bg-red-50 border border-red-200 transition-colors"
+                        >
+                          Cancel Report
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ---------------- TAB 2: REPORT FOUND ITEM (WITH DESTINATION ROUTING) ---------------- */}
       {activeTab === 'report-found' && (
         <ReportFoundForm
@@ -708,14 +872,14 @@ export default function LostFoundBoard() {
         <ReportLostForm
           user={user}
           onSuccess={() => {
-            setActiveTab('matches')
+            setActiveTab(isHandler ? 'matches' : 'my-lost')
             loadData()
           }}
         />
       )}
 
-      {/* ---------------- TAB 4: SMART MATCHES (TRANSPARENT 6-FACTOR ENGINE) ---------------- */}
-      {activeTab === 'matches' && (
+      {/* ---------------- TAB 4: SMART MATCHES (AUTHORIZED HANDLERS ONLY) ---------------- */}
+      {activeTab === 'matches' && isHandler && (
         <div className="space-y-4">
           <div className="rounded-2xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 p-4 text-xs text-indigo-950 space-y-2">
             <div className="flex items-center justify-between">
@@ -985,6 +1149,40 @@ export default function LostFoundBoard() {
                         <p className="text-xs text-slate-500">
                           Found at <strong>{item.locationFound}</strong> · Receiving Dept: <strong>{item.destinationDepartmentName || item.assignedHandlerName}</strong> · Storage: <strong>{item.storageLocation || 'Awaiting Placement'}</strong>
                         </p>
+
+                        {/* Authorized Handler Case Scope Data (Requirement 7) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Finder Details</span>
+                            <span className="font-semibold text-slate-800">{item.finderName || 'Anonymous Finder'}</span>
+                            {item.finderEmail && <span className="text-slate-500 block text-[11px] font-mono">{item.finderEmail}</span>}
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Registered Institutional Owner</span>
+                            {item.ownerStudentId || item.ownerName ? (
+                              <div>
+                                <span className="font-bold text-slate-900">{item.ownerName}</span>
+                                <span className="text-brand-700 block text-[11px] font-mono font-bold">ID: {item.ownerStudentId}</span>
+                                {item.ownerEmail && <span className="text-slate-500 block text-[11px]">{item.ownerEmail}</span>}
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-[11px]">Pending claimant in-person presentation</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {item.characteristics && (
+                          <div className="text-[11px] text-slate-600 bg-amber-50/50 p-2 rounded-lg border border-amber-100">
+                            <strong>Characteristics:</strong> {item.characteristics}
+                          </div>
+                        )}
+
+                        {item.privateIdentifyingDetails && (
+                          <div className="text-[11px] text-indigo-900 bg-indigo-50/60 p-2 rounded-lg border border-indigo-100">
+                            <strong>Private Verification Clues:</strong> {item.privateIdentifyingDetails}
+                          </div>
+                        )}
+
                         <p className="text-xs text-slate-700 leading-relaxed">{item.description}</p>
                       </div>
 

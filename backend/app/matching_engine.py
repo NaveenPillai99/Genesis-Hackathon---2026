@@ -207,9 +207,11 @@ def run_cross_department_matching(db: Session, target_item: LostFoundItem) -> li
             ItemMatchCandidate.found_report_id == found_item.id
         ).first()
 
-        review_status = "pending_review"
-        if score >= HIGH_CONFIDENCE_THRESHOLD:
-            review_status = "notified"
+        already_notified = False
+        if existing_candidate and existing_candidate.review_status in ["notified", "confirmed_match", "dismissed"]:
+            already_notified = True
+
+        review_status = existing_candidate.review_status if existing_candidate else "pending_review"
 
         if existing_candidate:
             existing_candidate.match_score = score
@@ -230,24 +232,33 @@ def run_cross_department_matching(db: Session, target_item: LostFoundItem) -> li
         db.commit()
         db.refresh(match_record)
 
-        # Send Notifications for High & Possible matches
-        if score >= POSSIBLE_MATCH_THRESHOLD:
-            conf_label = "High" if score >= HIGH_CONFIDENCE_THRESHOLD else "Possible"
-            dest_dept = found_item.destination_department_name or found_item.assigned_handler_name or "Responsible Department"
+        # Send Notifications for High & Possible matches (Only if not already notified)
+        if score >= POSSIBLE_MATCH_THRESHOLD and not already_notified:
+            dest_dept = found_item.destination_department_name or "Department Office"
+            if "welfare" in dest_dept.lower():
+                office_name = "Office of Student Welfare"
+            elif "cse" in dest_dept.lower() or "computer" in dest_dept.lower():
+                office_name = "CSE Department office"
+            elif "math" in dest_dept.lower():
+                office_name = "Mathematics Department office"
+            elif "ece" in dest_dept.lower():
+                office_name = "ECE Department office"
+            elif "mech" in dest_dept.lower():
+                office_name = "Mechanical Department office"
+            else:
+                office_name = f"{dest_dept} office"
 
-            # 1. Private notification to Owner of Lost Report
+            # 1. Private notification to Owner of Lost Report (Safe template, Section 5)
             msg_to_owner = (
-                f"Possible Lost & Found Match: A found item may match your lost-item report for '{lost_item.title}'. "
-                f"A similar item has been reported at {found_item.location_found} and is associated with {dest_dept}. "
-                f"Match confidence: {conf_label} ({score}%). "
-                f"Please contact the designated department handler and bring your college ID card for verification. "
-                f"This notification does not confirm ownership or guarantee that the item is available for collection."
+                f"A found item with a similar description to your lost-item report has been submitted to the {dest_dept}. "
+                f"Please visit the {office_name} with your college ID card to verify ownership and collect the item if it is confirmed to be yours. "
+                f"The department will verify your identity before releasing the item."
             )
 
             send_notification(
                 db=db,
                 recipient_id=lost_item.finder_id,  # finder_id is owner_id for lost items
-                title="Possible Lost & Found Match",
+                title="Possible Lost Item Match",
                 message=msg_to_owner,
                 category="lost_found",
                 link="/lost-found"
@@ -255,19 +266,25 @@ def run_cross_department_matching(db: Session, target_item: LostFoundItem) -> li
 
             # 2. Notification to Responsible Department Handler
             if found_item.assigned_handler_id:
+                conf_label = breakdown.get("confidence_level", "POSSIBLE")
                 msg_to_handler = (
-                    f"Match Alert ({conf_label} {score}%): Found item '{found_item.title}' in your custody matches "
-                    f"lost report '{lost_item.title}' by {lost_item.finder_name}. "
-                    f"Verify ownership in-person with College ID card before release."
+                    f"Match Alert ({conf_label} Confidence): Potential match detected for found item '{found_item.title}' in your department custody. "
+                    f"Please review the case in your handler console and verify claimant identity in person using their College ID card."
                 )
                 send_notification(
                     db=db,
                     recipient_id=found_item.assigned_handler_id,
-                    title=f"Lost & Found Match Candidate ({conf_label})",
+                    title=f"Potential Match Candidate: {dest_dept}",
                     message=msg_to_handler,
                     category="lost_found",
                     link="/lost-found"
                 )
+
+            # Update match record review_status and lost item status
+            match_record.review_status = "notified"
+            if lost_item.status == "active":
+                lost_item.status = "potential_match"
+            db.commit()
 
         results.append({
             "candidate_id": match_record.id,

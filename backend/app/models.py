@@ -52,6 +52,7 @@ class User(Base):
     assigned_facility_id = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    student_id = Column(String, nullable=True)  # Institutional ID / Roll number e.g. 'CB.EN.U4CSE22045'
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -323,6 +324,8 @@ class LostFoundItem(Base):
     claimant_college_id = Column(String, nullable=True)
     handover_recipient_name = Column(String, nullable=True)
     handover_timestamp = Column(DateTime, nullable=True)
+    owner_student_id = Column(String, nullable=True)
+    associated_lost_report_id = Column(String, nullable=True)
     is_synthetic = Column(Boolean, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)

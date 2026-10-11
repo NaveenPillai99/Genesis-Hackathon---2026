@@ -124,6 +124,11 @@ export const api = {
   getDepartments: () => apiRequest('/lost-found/departments'),
   getLostFoundItems: (params = '') => apiRequest(`/lost-found/${params ? '?' + params : ''}`),
   getMyReports: () => apiRequest('/lost-found/my-reports'),
+  getMyLostItems: () => apiRequest('/lost-found/my-lost-items'),
+  getMyFoundItems: () => apiRequest('/lost-found/my-found-items'),
+  cancelLostReport: (itemId) => apiRequest(`/lost-found/${itemId}/cancel`, { method: 'POST' }),
+  getHandlerCases: () => apiRequest('/lost-found/handler/cases'),
+  getHandlerCaseById: (caseId) => apiRequest(`/lost-found/handler/cases/${caseId}`),
   getAssignedItems: () => apiRequest('/lost-found/assigned-to-me'),
   getItem: (itemId) => apiRequest(`/lost-found/${itemId}`),
   reportItem: (data) => apiRequest('/lost-found/report', {
