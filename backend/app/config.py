@@ -20,6 +20,11 @@ class Settings(BaseModel):
 settings = Settings()
 
 # System Roles
+ROLE_CAMPUS_DIRECTOR = "campus_director"
+ROLE_DEAN = "dean"
+ROLE_PRINCIPAL = "principal"
+ROLE_HOD = "hod"
+ROLE_DEPARTMENT_HEAD = "department_head"
 ROLE_STUDENT = "student"
 ROLE_CLASS_REP = "class_rep"
 ROLE_CLASS_ADVISOR = "class_advisor"
@@ -31,6 +36,11 @@ ROLE_LOST_PROPERTY_HANDLER = "lost_property_handler"
 ROLE_SYS_ADMIN = "sys_admin"
 
 ALL_ROLES = [
+    ROLE_CAMPUS_DIRECTOR,
+    ROLE_DEAN,
+    ROLE_PRINCIPAL,
+    ROLE_HOD,
+    ROLE_DEPARTMENT_HEAD,
     ROLE_STUDENT,
     ROLE_CLASS_REP,
     ROLE_CLASS_ADVISOR,
@@ -41,3 +51,5 @@ ALL_ROLES = [
     ROLE_LOST_PROPERTY_HANDLER,
     ROLE_SYS_ADMIN,
 ]
+
+

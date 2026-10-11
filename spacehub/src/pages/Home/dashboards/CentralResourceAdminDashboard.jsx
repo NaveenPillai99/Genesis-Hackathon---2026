@@ -4,6 +4,7 @@ import {
   listRooms,
   listEvents,
   decideEvent,
+  autoDecideCluster,
   listAuditLogs,
 } from '../../../lib/dataClient'
 
@@ -57,7 +58,16 @@ export default function CentralResourceAdminDashboard({ user }) {
     }
   }
 
-  const pendingVenueRequests = allEvents.filter((e) => e.status === 'pending')
+  const pendingVenueRequests = allEvents
+    .filter((e) => e.status === 'pending')
+    .sort((a, b) => {
+      const prioA = a.priority !== undefined ? a.priority : (a.priorityScore >= 50 ? 1 : 0)
+      const prioB = b.priority !== undefined ? b.priority : (b.priorityScore >= 50 ? 1 : 0)
+      if (prioB !== prioA) return prioB - prioA
+      const timeA = new Date(a.createdAt || a.created_at || a.date || 0).getTime()
+      const timeB = new Date(b.createdAt || b.created_at || b.date || 0).getTime()
+      return timeA - timeB
+    })
   const approvedVenues = allEvents.filter((e) => e.status === 'approved')
   const classroomsCount = rooms.filter((r) => r.type === 'classroom').length
   const venueCount = rooms.filter((r) => r.type === 'event_venue').length
@@ -129,9 +139,32 @@ export default function CentralResourceAdminDashboard({ user }) {
               Compete requests for Main Auditorium and Seminar Halls with automated priority scoring.
             </p>
           </div>
-          <Link to="/events/approvals" className="text-xs font-semibold text-purple-600 hover:underline">
-            Approvals Matrix →
-          </Link>
+          <div className="flex items-center gap-3">
+            {pendingVenueRequests.length > 1 && (
+              <button
+                onClick={async () => {
+                  try {
+                    const firstReq = pendingVenueRequests[0]
+                    await autoDecideCluster({
+                      venueRoomId: firstReq.venueRoomId || firstReq.venue_id,
+                      date: firstReq.date || firstReq.event_date,
+                    })
+                    flash('AI Decision Engine: Automatically awarded slot to highest priority request & allocated alternative options to lower-priority requests!')
+                    loadData()
+                  } catch (e) {
+                    alert(e.message)
+                  }
+                }}
+                className="rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs px-3 py-1.5 shadow-xs transition flex items-center gap-1.5"
+              >
+                <span>⚡</span>
+                <span>Auto-Resolve via AI Model</span>
+              </button>
+            )}
+            <Link to="/events/approvals" className="text-xs font-semibold text-purple-600 hover:underline">
+              Approvals Matrix →
+            </Link>
+          </div>
         </div>
 
         {pendingVenueRequests.length === 0 ? (
@@ -147,12 +180,22 @@ export default function CentralResourceAdminDashboard({ user }) {
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-extrabold text-slate-900 text-sm">{evt.title}</h4>
+                      {evt.priority === 1 || (evt.priority === undefined && (evt.priorityScore || 85) >= 50) ? (
+                        <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px] ring-1 ring-inset ring-amber-300">
+                          ⚡ High Priority
+                        </span>
+                      ) : (
+                        <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-[10px] ring-1 ring-inset ring-slate-200">
+                          Normal Priority
+                        </span>
+                      )}
                       <span className="bg-purple-100 text-purple-900 font-bold px-2 py-0.5 rounded text-[10px]">
-                        Priority Score: {evt.priorityScore || 85} / 100
+                        Priority: {evt.priority !== undefined ? evt.priority : (evt.priorityScore >= 50 ? 1 : 0)}
                       </span>
                     </div>
+
                     <p className="text-slate-500 text-[11px] mt-0.5">
                       Organizer: {evt.requestedBy || 'Department'} · Venue: {evt.venueRoomId} · Expected: {evt.audienceSize || 300} attendees
                     </p>

@@ -167,12 +167,49 @@ class EventRequest(Base):
     is_academic = Column(Boolean, default=True)
     has_external_guests = Column(Boolean, default=False)
     priority_score = Column(Integer, default=50)
+    priority = Column(Integer, default=0)  # Binary output: 1 (High) or 0 (Normal)
+    raw_score = Column(Float, default=0.0)
+    sigmoid_confidence = Column(Float, default=0.0)
     av_requirements = Column(String, nullable=True)
     purpose = Column(Text, nullable=True)
-    status = Column(String, default="pending", index=True)  # 'pending', 'approved', 'declined', 'cancelled'
+    event_purpose = Column(String, nullable=True, default="Meeting / Discussion")
+    role_score = Column(Float, default=0.0)
+    purpose_score = Column(Float, default=0.0)
+    combined_priority_score = Column(Float, default=0.0)
+    policy_version = Column(String, default="v1.0")
+    requires_projector = Column(Boolean, default=False)
+    requires_ac = Column(Boolean, default=False)
+    requires_audio = Column(Boolean, default=False)
+    room_type_preference = Column(String, default="event_venue")
+    recommended_action = Column(String, nullable=True)
+    override_justification = Column(Text, nullable=True)
+    offered_alternatives = Column(Text, nullable=True)
+    selected_alternative = Column(Text, nullable=True)
+    status = Column(String, default="pending", index=True)  # DRAFT, PENDING, UNDER_REVIEW, APPROVED, REJECTED, ALTERNATIVES_OFFERED, ALTERNATIVE_SELECTED, CANCELLED, COMPLETED
     admin_notes = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def priority_label(self) -> str:
+        return "High Priority" if self.priority == 1 else "Normal Priority"
+
+
+class BookingPriorityPolicy(Base):
+    __tablename__ = "booking_priority_policies"
+
+    id = Column(String, primary_key=True, default="default")
+    version = Column(String, default="v1.0")
+    role_weight = Column(Float, default=0.60)
+    purpose_weight = Column(Float, default=0.40)
+    role_scores = Column(Text, nullable=False)
+    purpose_scores = Column(Text, nullable=False)
+    alternative_weights = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
 
 class Facility(Base):
     __tablename__ = "facilities"

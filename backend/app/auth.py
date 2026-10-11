@@ -13,7 +13,41 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token
 
 # Core RBAC Permission Definitions
 ROLE_PERMISSIONS: dict[str, set[str]] = {
+    "campus_director": {
+        "classroom.view",
+        "timetable.view",
+        "event.view",
+        "event.request.create",
+        "event.request.view_own",
+        "facility.view",
+        "audit.view",
+    },
+    "dean": {
+        "classroom.view",
+        "timetable.view",
+        "event.view",
+        "event.request.create",
+        "event.request.view_own",
+        "facility.view",
+    },
+    "principal": {
+        "classroom.view",
+        "timetable.view",
+        "event.view",
+        "event.request.create",
+        "event.request.view_own",
+        "facility.view",
+    },
+    "hod": {
+        "classroom.view",
+        "timetable.view",
+        "event.view",
+        "event.request.create",
+        "event.request.view_own",
+        "facility.view",
+    },
     "student": {
+
         "classroom.view",
         "timetable.view",
         "event.view",

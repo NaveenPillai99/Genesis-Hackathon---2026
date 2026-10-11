@@ -34,6 +34,22 @@ def ensure_columns(target_engine):
             ("lost_found_items", "associated_lost_report_id", "TEXT"),
             ("lost_found_items", "is_synthetic", "BOOLEAN DEFAULT 0"),
             ("users", "student_id", "TEXT"),
+            ("event_requests", "priority", "INTEGER DEFAULT 0"),
+            ("event_requests", "raw_score", "REAL DEFAULT 0.0"),
+            ("event_requests", "sigmoid_confidence", "REAL DEFAULT 0.0"),
+            ("event_requests", "event_purpose", "TEXT DEFAULT 'Meeting / Discussion'"),
+            ("event_requests", "role_score", "REAL DEFAULT 0.0"),
+            ("event_requests", "purpose_score", "REAL DEFAULT 0.0"),
+            ("event_requests", "combined_priority_score", "REAL DEFAULT 0.0"),
+            ("event_requests", "policy_version", "TEXT DEFAULT 'v1.0'"),
+            ("event_requests", "requires_projector", "BOOLEAN DEFAULT 0"),
+            ("event_requests", "requires_ac", "BOOLEAN DEFAULT 0"),
+            ("event_requests", "requires_audio", "BOOLEAN DEFAULT 0"),
+            ("event_requests", "room_type_preference", "TEXT DEFAULT 'event_venue'"),
+            ("event_requests", "recommended_action", "TEXT"),
+            ("event_requests", "override_justification", "TEXT"),
+            ("event_requests", "offered_alternatives", "TEXT"),
+            ("event_requests", "selected_alternative", "TEXT"),
         ]:
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
@@ -54,6 +70,10 @@ def seed_database(db: SessionLocal = None):
 
     # 1. Seed Roles & Permissions
     roles_data = [
+        ("campus_director", "Campus Director", "Campus executive leadership, ultimate institutional priority"),
+        ("dean", "Dean", "Faculty and research deanery, strategic university initiatives"),
+        ("principal", "Principal", "College academic and administrative head"),
+        ("hod", "Head of Department (HOD)", "Department leadership, faculty oversight, academic priority authorizations"),
         ("student", "Student", "Access free study spaces, view timetable, search campus resources, file claims"),
         ("class_rep", "Class Representative", "Submit class reschedule proposals, book revision rooms within cap"),
         ("class_advisor", "Class Advisor", "Authorize reschedule proposals for assigned classes, classroom custody"),
@@ -145,6 +165,15 @@ def seed_database(db: SessionLocal = None):
             password_hash=pwd
         ),
         User(
+            id="user-faculty-2",
+            name="Dr Prashant R Nair",
+            email="prashant@cb.amrita.edu",
+            role="faculty",
+            department="CSE",
+            class_section="CSE",
+            password_hash=pwd
+        ),
+        User(
             id="user-hpcfaculty-1",
             name="Dr Radhika N",
             email="radhika.hpc@cb.amrita.edu",
@@ -197,6 +226,42 @@ def seed_database(db: SessionLocal = None):
             email="sysadmin@cb.amrita.edu",
             role="sys_admin",
             department="ICT & Campus Systems",
+            class_section=None,
+            password_hash=pwd
+        ),
+        User(
+            id="user-director-1",
+            name="Dr Sasangan Ramanathan",
+            email="director@cb.amrita.edu",
+            role="campus_director",
+            department="Campus Administration",
+            class_section=None,
+            password_hash=pwd
+        ),
+        User(
+            id="user-dean-1",
+            name="Dr Shankar K",
+            email="dean@cb.amrita.edu",
+            role="dean",
+            department="Deanery of Engineering",
+            class_section=None,
+            password_hash=pwd
+        ),
+        User(
+            id="user-principal-1",
+            name="Dr Balakrishnan",
+            email="principal@cb.amrita.edu",
+            role="principal",
+            department="Office of Principal",
+            class_section=None,
+            password_hash=pwd
+        ),
+        User(
+            id="user-hod-1",
+            name="Dr Prema Nedungadi",
+            email="hod.cse@cb.amrita.edu",
+            role="hod",
+            department="Computer Science & Engineering",
             class_section=None,
             password_hash=pwd
         ),

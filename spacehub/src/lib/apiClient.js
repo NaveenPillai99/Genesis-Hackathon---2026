@@ -51,6 +51,7 @@ export const api = {
     body: JSON.stringify({ email, password }),
   }),
   getMe: () => apiRequest('/auth/me'),
+  getPriority: (userId = '') => apiRequest(`/auth/priority${userId ? '?user_id=' + userId : ''}`),
 
   // Classrooms
   getRooms: (params = '') => apiRequest(`/classrooms/rooms${params ? '?' + params : ''}`),
@@ -78,6 +79,10 @@ export const api = {
   // Events
   getEvents: (params = '') => apiRequest(`/events/${params ? '?' + params : ''}`),
   getEventFeed: () => apiRequest('/events/feed'),
+  previewEventPriority: (data) => apiRequest('/events/preview-priority', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
   requestEvent: (data) => apiRequest('/events/', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -86,6 +91,21 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+  getCompetingEvents: (venueId, date, startSlot, endSlot) =>
+    apiRequest(`/events/competing?venue_id=${venueId}&event_date=${date}&start_slot=${startSlot}&end_slot=${endSlot}`),
+  getEventAlternatives: (eventId) => apiRequest(`/events/${eventId}/alternatives`),
+  selectEventAlternative: (eventId, data) => apiRequest(`/events/${eventId}/select-alternative`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  getBookingPolicy: () => apiRequest('/events/policy'),
+  updateBookingPolicy: (data) => apiRequest('/events/policy', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  autoDecideCluster: ({ venueRoomId, date }) =>
+    apiRequest(`/events/auto-decide-cluster?venue_id=${venueRoomId}&event_date=${date}`, { method: 'POST' }),
+
 
   // Facilities
   getFacilities: () => apiRequest('/facilities/'),
