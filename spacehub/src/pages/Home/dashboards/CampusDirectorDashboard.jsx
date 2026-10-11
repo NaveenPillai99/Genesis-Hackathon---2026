@@ -623,7 +623,7 @@ export default function CampusDirectorDashboard({ user }) {
       </section>
 
       {/* Institutional Audit Trail */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-3">
+      <section id="audit" className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <span>📜</span>
