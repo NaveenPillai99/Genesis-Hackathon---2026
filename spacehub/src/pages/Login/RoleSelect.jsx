@@ -19,7 +19,6 @@ const ROLE_ORDER = [
   ROLES.FACULTY,
   ROLES.CLASS_REP,
   ROLES.STUDENT,
-  ROLES.HPC_FACULTY,
   ROLES.RESOURCE_ADMIN,
   ROLES.LAB_ADMIN,
   ROLES.LAB_ASSISTANT,
@@ -75,7 +74,9 @@ export default function RoleSelect() {
     }
   }
 
-  const candidates = (profiles ?? []).filter((p) => p.role === role)
+  const candidates = (profiles ?? []).filter(
+    (p) => p.role === role || (role === ROLES.LAB_ADMIN && p.role === ROLES.HPC_FACULTY)
+  )
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 font-sans">
@@ -202,7 +203,7 @@ export default function RoleSelect() {
                 ← Back to all roles
               </button>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-                Select account for: {ROLE_LABELS[role]}
+                Select account for: {role === ROLES.LAB_ADMIN ? 'Lab Administrator / HPC Manager' : ROLE_LABELS[role]}
               </p>
               {loading ? (
                 <Spinner />

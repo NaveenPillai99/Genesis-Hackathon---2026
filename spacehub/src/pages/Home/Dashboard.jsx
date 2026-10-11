@@ -5,15 +5,16 @@ import CampusDirectorDashboard from './dashboards/CampusDirectorDashboard'
 import DeanDashboard from './dashboards/DeanDashboard'
 import HODDashboard from './dashboards/HODDashboard'
 import HPCFacultyDashboard from './dashboards/HPCFacultyDashboard'
+import FacilitiesOverview from '../Facilities/FacilitiesOverview'
 import StudentDashboard from './dashboards/StudentDashboard'
 import ClassRepDashboard from './dashboards/ClassRepDashboard'
 import ClassAdvisorDashboard from './dashboards/ClassAdvisorDashboard'
 import GeneralFacultyDashboard from './dashboards/GeneralFacultyDashboard'
-import LabAssistantDashboard from './dashboards/LabAssistantDashboard'
-import LabAdminDashboard from './dashboards/LabAdminDashboard'
 import CentralResourceAdminDashboard from './dashboards/CentralResourceAdminDashboard'
 import StudentWelfareDashboard from './dashboards/StudentWelfareDashboard'
 import SystemAdminDashboard from './dashboards/SystemAdminDashboard'
+import LabAssistantDashboard from './dashboards/LabAssistantDashboard'
+import LabAdminDashboard from './dashboards/LabAdminDashboard'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -30,7 +31,7 @@ export default function Dashboard() {
       return <HODDashboard user={user} />
 
     case ROLES.HPC_FACULTY:
-      return <HPCFacultyDashboard user={user} />
+      return <FacilitiesOverview user={user} />
 
     case ROLES.CLASS_REP:
       return <ClassRepDashboard user={user} />

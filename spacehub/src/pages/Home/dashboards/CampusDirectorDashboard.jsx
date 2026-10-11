@@ -598,7 +598,7 @@ export default function CampusDirectorDashboard({ user }) {
               Full visibility across Computer Science, Mathematics, Electronics, Mechanical and all academic blocks.
             </p>
           </div>
-          <Link to="/timetable" className="text-xs font-semibold text-brand-600 hover:underline">
+          <Link to="/academic-scheduling" className="text-xs font-semibold text-brand-600 hover:underline">
             Interactive Timetable Matrix →
           </Link>
         </div>

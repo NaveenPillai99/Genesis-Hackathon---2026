@@ -366,7 +366,7 @@ export default function DeanDashboard({ user }) {
               Department scheduling compliance under Dean of Engineering oversight.
             </p>
           </div>
-          <Link to="/timetable" className="text-xs font-semibold text-brand-600 hover:underline">
+          <Link to="/academic-scheduling" className="text-xs font-semibold text-brand-600 hover:underline">
             View Timetable Matrix →
           </Link>
         </div>

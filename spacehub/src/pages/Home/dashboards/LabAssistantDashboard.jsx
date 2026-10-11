@@ -202,7 +202,7 @@ export default function LabAssistantDashboard({ user }) {
               Student Safety Induction Clearance Queue
             </h3>
           </div>
-          <span className="text-xs text-slate-400">Innovation Lab Roster</span>
+          <span className="text-xs text-slate-400">Facilities Roster</span>
         </div>
         <p className="text-xs text-slate-500">
           Students must complete physical safety training before operating 3D printers and laser cutters.

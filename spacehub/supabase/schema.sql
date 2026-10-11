@@ -19,7 +19,7 @@ create extension if not exists btree_gist; -- lets EXCLUDE mix equality + range 
 create table profiles (
   id           uuid primary key default gen_random_uuid(),
   name         text not null,
-  role         text not null check (role in ('student', 'class_rep', 'faculty', 'facility_incharge', 'admin')),
+  role         text not null check (role in ('student', 'class_rep', 'class_advisor', 'faculty', 'hpc_faculty', 'lab_assistant', 'lab_admin', 'resource_admin', 'lost_property_handler', 'sys_admin')),
   department   text,
   email        text unique,
   created_at   timestamptz not null default now()
@@ -70,8 +70,12 @@ create table room_bookings (
   released_at    timestamptz,
   admin_override_reason text,
   -- Generated range used purely for the exclusion constraint below.
-  period tstzrange generated always as (
-    tstzrange((booking_date + start_time)::timestamptz, (booking_date + end_time)::timestamptz)
+  -- Plain (timezone-naive) range: a GENERATED column's expression must be
+  -- immutable, and casting timestamp -> timestamptz depends on the session's
+  -- TimeZone setting, so it isn't. Single-campus wall-clock time needs no
+  -- timezone awareness anyway.
+  period tsrange generated always as (
+    tsrange(booking_date + start_time, booking_date + end_time)
   ) stored,
   -- THE double-booking guard: two active bookings for the same room can never
   -- have overlapping periods. This holds even under concurrent requests —
@@ -80,6 +84,36 @@ create table room_bookings (
 );
 create index on room_bookings (room_id, booking_date);
 create index on room_bookings (booked_by);
+
+-- ================================================== classroom waitlist ----
+-- First-come-first-served queue behind an already-booked slot. When the
+-- holder cancels (or their booking auto-releases for no check-in), the
+-- earliest `waiting` row for that exact room+date+slot is handed a booking
+-- and flipped to 'promoted'. Someone over their weekly hour cap is marked
+-- 'skipped' instead, and the slot falls through to the next in line.
+create table room_waitlist (
+  id            uuid primary key default gen_random_uuid(),
+  room_id       text not null references rooms(id) on delete cascade,
+  waitlist_date date not null,
+  slot_id       text not null,
+  start_time    time not null,
+  end_time      time not null,
+  user_id       uuid not null references profiles(id),
+  user_role     text not null,
+  purpose       text,
+  status        text not null default 'waiting' check (status in ('waiting','promoted','skipped','cancelled')),
+  skipped_reason text,
+  joined_at     timestamptz not null default now(),   -- FCFS ordering key
+  promoted_at   timestamptz,
+  promoted_booking_id uuid references room_bookings(id),
+  -- One live queue entry per person per slot; cancelled/promoted rows are
+  -- history and may repeat.
+  constraint room_waitlist_one_live_entry
+    exclude (room_id with =, waitlist_date with =, slot_id with =, user_id with =)
+    where (status = 'waiting')
+);
+create index on room_waitlist (room_id, waitlist_date, slot_id, joined_at);
+create index on room_waitlist (user_id, status);
 
 -- A room can also be blocked outright for a date (admin override — exam,
 -- maintenance day, etc.), independent of any specific booking.
@@ -117,8 +151,8 @@ create table events (
   decided_by      uuid references profiles(id),
   decided_at      timestamptz,
   created_at      timestamptz not null default now(),
-  period tstzrange generated always as (
-    tstzrange((event_date + start_time)::timestamptz, (event_date + end_time)::timestamptz)
+  period tsrange generated always as (
+    tsrange(event_date + start_time, event_date + end_time)
   ) stored,
   -- Only APPROVED events are mutually exclusive — pending requests are
   -- allowed to overlap on purpose, so the admin can see them side by side.
@@ -138,8 +172,76 @@ create table facilities (
   induction_required boolean not null default true,
   allocation_model   text not null default 'time_slot' check (allocation_model in ('time_slot','compute_time')),
   image              text,
-  under_maintenance  boolean not null default false
+  under_maintenance  boolean not null default false,
+  -- Lab staff who review access requests for this facility, and the policy
+  -- thresholds that decide which of them gets it (see facility_requests).
+  lab_assistant_id        uuid references profiles(id),
+  lab_admin_id            uuid references profiles(id),
+  open_time               time not null default '09:00',
+  close_time              time not null default '17:00',
+  assistant_max_hours     numeric not null default 3,
+  assistant_max_node_hours numeric,
+  requires_admin_approval boolean not null default false
 );
+
+-- ================================================== facility access requests
+-- Submitted -> [Faculty endorsement ->] Lab review -> Approved / Rejected.
+--
+-- Students and class reps must name a faculty mentor (mentor_id) who
+-- endorses before the request reaches lab staff; staff requesting for
+-- themselves skip that stage and start at 'pending_lab'.
+--
+-- `level` is the *level of the request* and decides WHO reviews it:
+--   routine  -> the facility's Lab Assistant
+--   elevated -> escalated to the Lab Administrator
+-- A request is elevated when it runs longer than assistant_max_hours, asks
+-- for more than assistant_max_node_hours, falls outside staffed hours, lands
+-- on a weekend, or the facility is flagged requires_admin_approval. The rule
+-- set lives in src/lib/facilityRouting.js so the request form can preview the
+-- routing before submitting; level/level_reasons are stored here so the
+-- decision is auditable after the fact.
+create table facility_requests (
+  id                uuid primary key default gen_random_uuid(),
+  facility_id       text not null references facilities(id) on delete cascade,
+  requester_id      uuid not null references profiles(id),
+  requester_role    text not null,
+  request_date      date not null,
+  start_time        time not null,
+  end_time          time not null,
+  duration_minutes  int,
+  reason            text not null,
+  location          text,
+  node_hours        numeric,                 -- compute_time facilities only
+  level             text not null default 'routine' check (level in ('routine','elevated')),
+  level_reasons     jsonb not null default '[]'::jsonb,
+  -- stage 1: faculty endorsement (null mentor_id => stage skipped)
+  mentor_id         uuid references profiles(id),
+  mentor_decision   text check (mentor_decision in ('approved','rejected')),
+  mentor_decided_at timestamptz,
+  mentor_note       text,
+  -- stage 2: lab allocation
+  reviewer_id       uuid references profiles(id),
+  reviewer_role     text,
+  lab_decision      text check (lab_decision in ('approved','rejected','alternative')),
+  lab_decided_at    timestamptz,
+  lab_note          text,
+  alt_date          date,
+  alt_start_time    time,
+  alt_end_time      time,
+  status            text not null default 'pending_faculty'
+                      check (status in ('pending_faculty','pending_lab','alternative_offered','approved','rejected','cancelled')),
+  created_at        timestamptz not null default now(),
+  period tsrange generated always as (
+    tsrange(request_date + start_time, request_date + end_time)
+  ) stored,
+  -- Two allocated sessions can never overlap on the same facility. Pending
+  -- requests may overlap on purpose — they aren't holding the slot yet.
+  exclude using gist (facility_id with =, period with &&) where (status = 'approved')
+);
+create index on facility_requests (facility_id, request_date);
+create index on facility_requests (mentor_id, status);
+create index on facility_requests (reviewer_id, status);
+create index on facility_requests (requester_id);
 
 create table inductions (
   id            uuid primary key default gen_random_uuid(),
@@ -160,8 +262,8 @@ create table facility_bookings (
   purpose       text,
   status        text not null default 'booked' check (status in ('booked','completed','cancelled')),
   created_at    timestamptz not null default now(),
-  period tstzrange generated always as (
-    tstzrange((booking_date + start_time)::timestamptz, (booking_date + end_time)::timestamptz)
+  period tsrange generated always as (
+    tsrange(booking_date + start_time, booking_date + end_time)
   ) stored,
   exclude using gist (facility_id with =, period with &&) where (status = 'booked')
 );
@@ -241,9 +343,11 @@ alter table profiles enable row level security;
 alter table rooms enable row level security;
 alter table timetable_slots enable row level security;
 alter table room_bookings enable row level security;
+alter table room_waitlist enable row level security;
 alter table blocked_dates enable row level security;
 alter table events enable row level security;
 alter table facilities enable row level security;
+alter table facility_requests enable row level security;
 alter table inductions enable row level security;
 alter table facility_bookings enable row level security;
 alter table hpc_allocations enable row level security;
@@ -254,9 +358,11 @@ create policy "read all - profiles" on profiles for select using (true);
 create policy "read all - rooms" on rooms for select using (true);
 create policy "read all - timetable" on timetable_slots for select using (true);
 create policy "read all - room_bookings" on room_bookings for select using (true);
+create policy "read all - room_waitlist" on room_waitlist for select using (true);
 create policy "read all - blocked_dates" on blocked_dates for select using (true);
 create policy "read all - events" on events for select using (true);
 create policy "read all - facilities" on facilities for select using (true);
+create policy "read all - facility_requests" on facility_requests for select using (true);
 create policy "read all - inductions" on inductions for select using (true);
 create policy "read all - facility_bookings" on facility_bookings for select using (true);
 create policy "read all - hpc_allocations" on hpc_allocations for select using (true);
@@ -264,10 +370,12 @@ create policy "read all - lost_items" on lost_items for select using (true);
 create policy "read all - maintenance_reports" on maintenance_reports for select using (true);
 
 create policy "signed-in write - room_bookings" on room_bookings for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "signed-in write - room_waitlist" on room_waitlist for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - blocked_dates" on blocked_dates for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - events" on events for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - timetable" on timetable_slots for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - facilities" on facilities for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "signed-in write - facility_requests" on facility_requests for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - inductions" on inductions for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - facility_bookings" on facility_bookings for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "signed-in write - hpc_allocations" on hpc_allocations for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

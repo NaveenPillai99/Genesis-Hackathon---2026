@@ -14,6 +14,10 @@ import RequestVenue from './pages/Events/RequestVenue'
 import AdminApprovals from './pages/Events/AdminApprovals'
 import FacilityCatalogue from './pages/Facilities/FacilityCatalogue'
 import HPCAllocation from './pages/Facilities/HPCAllocation'
+import FacilitiesOverview from './pages/Facilities/FacilitiesOverview'
+import HPCFacultyDashboard from './pages/Home/dashboards/HPCFacultyDashboard'
+import LabAssistantDashboard from './pages/Home/dashboards/LabAssistantDashboard'
+import LabAdminDashboard from './pages/Home/dashboards/LabAdminDashboard'
 import LostFoundBoard from './pages/LostFound/LostFoundBoard'
 import AdminDashboard from './pages/Admin/AdminDashboard'
 import GovernanceAudit from './pages/Admin/GovernanceAudit'
@@ -37,6 +41,11 @@ function RequireRole({ allow, children }) {
     )
   }
   return children
+}
+
+function FacilityDashboard({ Component }) {
+  const { user } = useAuth()
+  return <Component user={user} />
 }
 
 function AppRoutes() {
@@ -65,6 +74,31 @@ function AppRoutes() {
           }
         />
         <Route path="/facilities" element={<FacilityCatalogue />} />
+        <Route path="/facilities/overview" element={<FacilitiesOverview />} />
+        <Route
+          path="/facilities/hpc-management"
+          element={
+            <RequireRole allow={(r) => r === ROLES.HPC_FACULTY}>
+              <FacilityDashboard Component={HPCFacultyDashboard} />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/facilities/lab-assistant"
+          element={
+            <RequireRole allow={(r) => r === ROLES.LAB_ASSISTANT}>
+              <FacilityDashboard Component={LabAssistantDashboard} />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/facilities/lab-administration"
+          element={
+            <RequireRole allow={(r) => r === ROLES.LAB_ADMIN}>
+              <FacilityDashboard Component={LabAdminDashboard} />
+            </RequireRole>
+          }
+        />
         <Route path="/facilities/hpc" element={<HPCAllocation />} />
         <Route path="/lost-found" element={<LostFoundBoard />} />
         <Route

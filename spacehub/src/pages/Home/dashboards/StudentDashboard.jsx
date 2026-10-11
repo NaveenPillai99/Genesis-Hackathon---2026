@@ -157,7 +157,7 @@ export default function StudentDashboard({ user }) {
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             <h3 className="text-sm font-bold text-slate-900">
-              Prototyping Facilities &amp; Innovation Labs Discovery
+              Facilities Discovery
             </h3>
             <p className="text-xs text-slate-500">
               Read-only availability. Certified students may book authorized slots.

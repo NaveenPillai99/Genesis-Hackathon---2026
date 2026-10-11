@@ -48,7 +48,7 @@ export default function UserProfile() {
     [ROLES.STUDENT]: [
       'View Real-Time Classroom Availability & Free Slots',
       'Browse Campus Public Events Feed',
-      'Book Eligible Innovation Facilities (after Safety Induction)',
+      'Book Eligible Facilities (after Safety Induction)',
       'Submit Lost and Found Item Reports',
       'Submit and Track Ownership Claims with Custodians',
     ],
@@ -307,7 +307,7 @@ export default function UserProfile() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-                <h3 className="font-bold text-slate-900 text-sm mb-3">🧪 Innovation Lab Safety Inductions</h3>
+                <h3 className="font-bold text-slate-900 text-sm mb-3">🧪 Facility Safety Inductions</h3>
                 <div className="space-y-2 text-xs">
                   <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200 flex items-center justify-between">
                     <div>

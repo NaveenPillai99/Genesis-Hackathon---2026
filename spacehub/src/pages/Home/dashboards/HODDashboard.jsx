@@ -368,7 +368,7 @@ export default function HODDashboard({ user }) {
               Timetable schedules and space assignments managed by HOD.
             </p>
           </div>
-          <Link to="/timetable" className="text-xs font-semibold text-brand-600 hover:underline">
+          <Link to="/academic-scheduling" className="text-xs font-semibold text-brand-600 hover:underline">
             Manage Timetables →
           </Link>
         </div>

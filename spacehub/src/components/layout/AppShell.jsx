@@ -2,11 +2,131 @@ import { useState, useEffect } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
+  ROLES,
   ROLE_LABELS,
   ROLE_BADGE_COLORS,
 } from '../../lib/constants'
 import { listNotifications } from '../../lib/dataClient'
 import NotificationDrawer from './NotificationDrawer'
+
+function navFor(role) {
+  if (role === ROLES.HPC_FACULTY) {
+    return [
+      { to: '/', label: 'Facilities Overview', icon: '🏠', end: true },
+      { to: '/facilities/overview', label: 'Facilities', icon: '🏢' },
+      { to: '/facilities/hpc-management', label: 'HPC Faculty', icon: '⚡' },
+      { to: '/facilities', label: 'Access Requests & Schedule', icon: '🧪' },
+      { to: '/facilities/hpc', label: 'Nodes & Allocations', icon: '🖥️' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LAB_ASSISTANT) {
+    return [
+      { to: '/', label: 'Facilities Overview', icon: '🏠', end: true },
+      { to: '/facilities/overview', label: 'Facilities', icon: '🏢' },
+      { to: '/facilities/lab-assistant', label: 'Lab Assistant', icon: '🔧' },
+      { to: '/facilities', label: 'Facility Catalogue', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LAB_ADMIN) {
+    return [
+      { to: '/', label: 'Facilities Overview', icon: '🏠', end: true },
+      { to: '/facilities/overview', label: 'Facilities', icon: '🏢' },
+      { to: '/facilities/lab-administration', label: 'Lab Administrator', icon: '🔬' },
+      { to: '/facilities', label: 'Facility Catalogue', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.CLASS_ADVISOR) {
+    return [
+      { to: '/', label: 'Advisor Portal', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'Timetable Approvals', icon: '✅' },
+      { to: '/classrooms', label: 'Book Class Slot', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/lost-found', label: 'Classroom Custody', icon: '📦' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.CLASS_REP) {
+    return [
+      { to: '/', label: 'Class Rep Console', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'My Class Timetable', icon: '📅' },
+      { to: '/classrooms', label: 'Book Class Slot', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/events', label: 'Campus Events', icon: '🎤' },
+      { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.FACULTY) {
+    return [
+      { to: '/', label: 'Faculty Desk', icon: '🏠', end: true },
+      { to: '/academic-scheduling', label: 'Teaching Schedule', icon: '📚' },
+      { to: '/classrooms', label: 'Book Class Slot', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.RESOURCE_ADMIN || role === ROLES.ADMIN) {
+    return [
+      { to: '/', label: 'Resource Admin Desk', icon: '🏠', end: true },
+      { to: '/events/approvals', label: 'Venue Approvals', icon: '⚖️' },
+      { to: '/events', label: 'Event Venues', icon: '🎤' },
+      { to: '/classrooms', label: 'Campus Classrooms', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/admin', label: 'Campus Analytics', icon: '📊' },
+      { to: '/governance', label: 'Audit & Governance', icon: '🛡️' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.LOST_PROPERTY_HANDLER) {
+    return [
+      { to: '/', label: 'Custody Center', icon: '🏠', end: true },
+      { to: '/lost-found', label: 'Custody & Handover', icon: '🎒' },
+      { to: '/classrooms', label: 'Campus Blocks', icon: '🏫' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  if (role === ROLES.SYS_ADMIN) {
+    return [
+      { to: '/', label: 'System Admin Console', icon: '🏠', end: true },
+      { to: '/governance', label: 'Security & AUMS ERP', icon: '🛡️' },
+      { to: '/admin', label: 'System Health & Metrics', icon: '📊' },
+      { to: '/facilities', label: 'Facilities & Labs', icon: '🧪' },
+      { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+    ]
+  }
+
+  // Default: Student
+  return [
+    { to: '/', label: 'Student Cockpit', icon: '🏠', end: true },
+    { to: '/classrooms', label: 'Study Classrooms', icon: '🪑' },
+    { to: '/academic-scheduling', label: 'My Timetable', icon: '📅' },
+    { to: '/facilities', label: 'Facilities', icon: '🧪' },
+    { to: '/events', label: 'Campus Events', icon: '🎤' },
+    { to: '/lost-found', label: 'Lost & Found', icon: '🔎' },
+    { to: '/profile', label: 'My Profile & ID', icon: '👤' },
+  ]
+}
+
+function linkClasses({ isActive }) {
+  return [
+    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap',
+    isActive
+      ? 'bg-brand-50 text-brand-700 font-semibold shadow-xs'
+      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+  ].join(' ')
+}
 
 export default function AppShell() {
   const { user, logout } = useAuth()

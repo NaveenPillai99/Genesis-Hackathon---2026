@@ -39,7 +39,7 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
       return [
         { label: 'PROFILE', icon: '🎓', path: '/profile' },
         { label: 'DIRECTOR APPROVALS', icon: '🏛️', targetId: 'approvals' },
-        { label: 'TIMETABLE MATRIX', icon: '📅', path: '/timetable' },
+        { label: 'TIMETABLE MATRIX', icon: '📅', path: '/academic-scheduling' },
         { label: 'CAMPUS VENUES', icon: '🎤', path: '/events' },
         { label: 'ANALYTICS', icon: '📊', modalType: 'analytics' },
         { label: 'AUDIT TRAIL', icon: '🛡️', path: '/governance' },
@@ -52,7 +52,7 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
       return [
         { label: 'PROFILE', icon: '🎓', path: '/profile' },
         { label: 'DEAN DESK', icon: '📋', targetId: 'reviews' },
-        { label: 'SCHOOL TIMETABLE', icon: '📅', path: '/timetable' },
+        { label: 'SCHOOL TIMETABLE', icon: '📅', path: '/academic-scheduling' },
         { label: 'FACULTY SCHEDULES', icon: '🧑‍🏫', modalType: 'dept_faculty' },
         { label: 'CLASSROOMS', icon: '🏫', path: '/classrooms' },
         { label: 'EVENT PROPOSALS', icon: '🎤', targetId: 'reviews' },
@@ -65,7 +65,7 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
       return [
         { label: 'PROFILE', icon: '🎓', path: '/profile' },
         { label: 'HOD DESK', icon: '🏢', targetId: 'reviews' },
-        { label: 'DEPT TIMETABLE', icon: '📅', path: '/timetable' },
+        { label: 'DEPT TIMETABLE', icon: '📅', path: '/academic-scheduling' },
         { label: 'DEPT FACULTY', icon: '🧑‍🏫', modalType: 'dept_faculty' },
         { label: 'DEPT LABS', icon: '🔬', modalType: 'dept_labs' },
         { label: 'REQUESTS', icon: '📝', targetId: 'reviews' },

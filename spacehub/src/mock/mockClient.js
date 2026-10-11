@@ -16,12 +16,16 @@ import {
   CHECK_IN_GRACE_MINUTES,
   EVENT_STATUS,
   FACILITY_BOOKING_STATUS,
+  FACILITY_REQUEST_STATUS,
   HPC_STATUS,
   LOST_ITEM_STATUS,
   MAINTENANCE_STATUS,
+  ROLES,
   ROOM_TYPES,
+  WAITLIST_STATUS,
   WEEKLY_HOUR_CAP,
 } from '../lib/constants'
+import { planRequestRoute } from '../lib/facilityRouting'
 import {
   toMinutes,
   overlaps,
@@ -39,7 +43,11 @@ import {
   COURSE_LEGEND,
 } from './seedData'
 
-const STORAGE_KEY = 'spacehub_db_v1'
+// Bumped to v2 when facility access requests landed: facilities gained lab
+// staff + policy thresholds, and a new facilityRequests collection appeared.
+// Browsers holding a v1 blob reseed cleanly instead of silently missing the
+// new fields.
+const STORAGE_KEY = 'spacehub_db_v2'
 const HPC_AUTO_APPROVE_THRESHOLD = 20 // node-hours; above this needs faculty approval
 const RECENT_BOOKER_WINDOW_DAYS = 3
 
@@ -315,6 +323,139 @@ export const SEED_CHANGE_REQUESTS = [
     createdAt: new Date().toISOString(),
   },
 ]
+/**
+ * A few facility access requests spread across the workflow so the schedule,
+ * the approval queues and the status tracker all have content on first load.
+ * Dates are relative to "today" so the demo never looks stale.
+ */
+function seedFacilityRequests() {
+  const d = (offset) => {
+    const base = new Date()
+    base.setDate(base.getDate() + offset)
+    return toISODateLocal(base)
+  }
+  const now = new Date().toISOString()
+
+  return [
+    // Already allocated — fills the schedule board.
+    {
+      id: 'freq-seed-1',
+      facilityId: 'fac-3dprint',
+      requesterId: 'user-student-2',
+      requesterName: 'Diya Krishnan',
+      requesterRole: 'student',
+      date: d(0),
+      startTime: '10:00',
+      endTime: '12:00',
+      durationMinutes: 120,
+      reason: 'Printing the chassis for our capstone rover prototype.',
+      location: 'Innovation Lab bench 3',
+      nodeHours: null,
+      level: 'routine',
+      levelReasons: [],
+      mentorId: 'user-faculty-1',
+      mentorName: 'Dr Thilaga M',
+      mentorDecision: 'approved',
+      mentorDecidedAt: now,
+      mentorNote: 'Part of her capstone scope — endorsed.',
+      reviewerId: 'user-labassist-2',
+      reviewerRole: 'lab_assistant',
+      reviewerName: 'Ms Kavipriya',
+      labDecision: 'approved',
+      labDecidedAt: now,
+      labNote: 'Printer 2 reserved and filament loaded.',
+      status: 'approved',
+      createdAt: now,
+    },
+    // Waiting on the Lab Administrator (elevated: hazardous bench).
+    {
+      id: 'freq-seed-2',
+      facilityId: 'fac-electronics',
+      requesterId: 'user-student-1',
+      requesterName: 'Aarav Menon',
+      requesterRole: 'student',
+      date: d(1),
+      startTime: '14:00',
+      endTime: '16:00',
+      durationMinutes: 120,
+      reason: 'Soldering the power regulation board for the robotics kit.',
+      location: 'AB2 Basement, soldering bay',
+      nodeHours: null,
+      level: 'elevated',
+      levelReasons: ['This facility is flagged high-value / hazardous — the Lab Administrator signs off on every booking.'],
+      mentorId: 'user-faculty-2',
+      mentorName: 'Dr Kavitha P',
+      mentorDecision: 'approved',
+      mentorDecidedAt: now,
+      mentorNote: 'Supervised project work, approved.',
+      reviewerId: 'user-labadmin-2',
+      reviewerRole: 'lab_admin',
+      reviewerName: 'Dr Nikhil Joseph',
+      labDecision: null,
+      status: 'pending_lab',
+      createdAt: now,
+    },
+    // Waiting on faculty endorsement — first stop for a student request.
+    {
+      id: 'freq-seed-3',
+      facilityId: 'fac-hpc',
+      requesterId: 'user-student-2',
+      requesterName: 'Diya Krishnan',
+      requesterRole: 'student',
+      date: d(2),
+      startTime: '09:00',
+      endTime: '13:00',
+      durationMinutes: 240,
+      reason: 'Fine-tuning the thesis model on the GPU partition.',
+      location: 'Remote (SSH session)',
+      nodeHours: 32,
+      level: 'elevated',
+      levelReasons: ['32 node-hours requested, over the 20 node-hour assistant limit.'],
+      mentorId: 'user-faculty-1',
+      mentorName: 'Dr Thilaga M',
+      mentorDecision: null,
+      reviewerId: 'user-labadmin-1',
+      reviewerRole: 'lab_admin',
+      reviewerName: 'Dr Anand Shenoy',
+      labDecision: null,
+      status: 'pending_faculty',
+      createdAt: now,
+    },
+    // A faculty request that skipped endorsement entirely.
+    {
+      id: 'freq-seed-4',
+      facilityId: 'fac-vr',
+      requesterId: 'user-faculty-2',
+      requesterName: 'Dr Kavitha P',
+      requesterRole: 'faculty',
+      date: d(0),
+      startTime: '14:00',
+      endTime: '15:30',
+      durationMinutes: 90,
+      reason: 'Immersive-computing demo for the accreditation visit.',
+      location: 'VR Lab, AB1',
+      nodeHours: null,
+      level: 'routine',
+      levelReasons: [],
+      mentorId: null,
+      mentorName: null,
+      mentorDecision: null,
+      reviewerId: 'user-labassist-2',
+      reviewerRole: 'lab_assistant',
+      reviewerName: 'Ms Kavipriya',
+      labDecision: null,
+      status: 'pending_lab',
+      createdAt: now,
+    },
+  ]
+}
+
+function toISODateLocal(dateObj) {
+  const y = dateObj.getFullYear()
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 function freshDb() {
   return {
@@ -323,10 +464,12 @@ function freshDb() {
     timetableSlots: buildSeedTimetableSlots(),
     timetableChangeRequests: [...SEED_CHANGE_REQUESTS],
     roomBookings: [],
+    roomWaitlist: [],
     blockedDates: [],
     events: [...SEED_EVENTS],
     facilities: SEED_FACILITIES.map((f) => ({ ...f, underMaintenance: false })),
     facilityBookings: [],
+    facilityRequests: seedFacilityRequests(),
     inductions: [],
     hpcAllocations: [],
     lostItems: [
@@ -689,6 +832,8 @@ function sweepAutoRelease() {
     if (now > graceEnd) {
       b.status = BOOKING_STATUS.RELEASED
       b.releasedAt = now.toISOString()
+      // Nobody checked in — the slot goes to the next person queued for it.
+      promoteFromWaitlist(db, b.roomId, b.date, b.slotId, 'the holder never checked in')
       changed = true
     }
   }
@@ -774,7 +919,13 @@ export async function getAvailability({ date, roomIds } = {}) {
       }
       const booking = activeBookingsFor(room.id, date).find((b) => b.slotId === slot.id)
       if (booking) {
-        return { ...slot, status: booking.status === BOOKING_STATUS.CHECKED_IN ? 'checked_in' : 'booked', booking }
+        return {
+          ...slot,
+          status: booking.status === BOOKING_STATUS.CHECKED_IN ? 'checked_in' : 'booked',
+          booking,
+          // How many people are queued behind this booking (FCFS).
+          waitingCount: waitingFor(db, room.id, date, slot.id).length,
+        }
       }
       return { ...slot, status: 'free' }
     })
@@ -859,7 +1010,227 @@ export async function cancelRoomBooking(id) {
     if (!b) throw new Error('Booking not found.')
     b.status = BOOKING_STATUS.CANCELLED
     b.releasedAt = new Date().toISOString()
+    // Hand the freed slot to whoever is first in the queue.
+    promoteFromWaitlist(d, b.roomId, b.date, b.slotId, 'the previous booking was cancelled')
     return b
+  })
+}
+
+// ------------------------------------------------- classroom waitlist (FCFS)
+// When a slot is already taken, anyone else who can book may join a
+// first-come-first-served queue for it. The moment the holder cancels — or
+// their booking auto-releases for not checking in — the next person in line
+// is handed the slot automatically and notified.
+
+/** Hours this person already holds in the week containing `date`. */
+function weeklyBookedHoursSync(d, userId, date) {
+  const weekStart = weekStartISO(date)
+  const weekEnd = new Date(`${weekStart}T00:00:00`)
+  weekEnd.setDate(weekEnd.getDate() + 7)
+  const weekEndIso = toISODateLocal(weekEnd)
+  return (d.roomBookings ?? [])
+    .filter(
+      (b) =>
+        b.bookedBy === userId &&
+        b.status !== BOOKING_STATUS.CANCELLED &&
+        b.status !== BOOKING_STATUS.RELEASED &&
+        b.date >= weekStart &&
+        b.date < weekEndIso
+    )
+    .reduce((sum, b) => sum + durationHours(b.start, b.end), 0)
+}
+
+/** The live FCFS queue for one slot, oldest first. */
+function waitingFor(d, roomId, date, slotId) {
+  return (d.roomWaitlist ?? [])
+    .filter(
+      (w) =>
+        w.roomId === roomId &&
+        w.date === date &&
+        w.slotId === slotId &&
+        w.status === WAITLIST_STATUS.WAITING
+    )
+    .sort((a, b) => (a.joinedAt < b.joinedAt ? -1 : 1))
+}
+
+/**
+ * Give a freed slot to the first eligible person in the queue. Anyone whose
+ * weekly cap would be blown is skipped (and told why) rather than silently
+ * handed a booking that breaks policy — the slot falls through to the next.
+ * Returns the created booking, or null if nobody could take it.
+ */
+function promoteFromWaitlist(d, roomId, date, slotId, becauseText) {
+  const queue = waitingFor(d, roomId, date, slotId)
+  if (queue.length === 0) return null
+
+  // Don't promote into a room that's blocked or out of service.
+  const blocked = (d.blockedDates ?? []).some((b) => b.roomId === roomId && b.date === date)
+  const broken = (d.maintenanceReports ?? []).some(
+    (m) => m.targetType === 'room' && m.targetId === roomId && m.severity === 'serious' && m.status !== MAINTENANCE_STATUS.RESOLVED
+  )
+  if (blocked || broken) return null
+
+  // Someone else may already hold it again (e.g. two cancels racing).
+  const stillTaken = (d.roomBookings ?? []).some(
+    (b) =>
+      b.roomId === roomId &&
+      b.date === date &&
+      b.slotId === slotId &&
+      (b.status === BOOKING_STATUS.BOOKED || b.status === BOOKING_STATUS.CHECKED_IN)
+  )
+  if (stillTaken) return null
+
+  const slot = BOOKABLE_SLOTS.find((s) => s.id === slotId)
+  if (!slot) return null
+  const room = (d.rooms ?? []).find((r) => r.id === roomId)
+
+  for (const entry of queue) {
+    const cap = WEEKLY_HOUR_CAP[entry.userRole]
+    if (cap) {
+      const used = weeklyBookedHoursSync(d, entry.userId, date)
+      if (used + durationHours(slot.start, slot.end) > cap) {
+        entry.status = WAITLIST_STATUS.SKIPPED
+        entry.skippedReason = `Weekly ${cap}-hr cap reached, so the slot passed to the next person in line.`
+        notify(d, {
+          recipientId: entry.userId,
+          title: 'Queue skipped you',
+          message: `${room?.name ?? 'A room'} freed up on ${date}, but your weekly ${cap}-hr cap is full.`,
+          category: 'classroom',
+          link: '/classrooms',
+        })
+        continue
+      }
+    }
+
+    const booking = {
+      id: newId('bk'),
+      roomId,
+      date,
+      slotId,
+      start: slot.start,
+      end: slot.end,
+      bookedBy: entry.userId,
+      purpose: entry.purpose || 'Promoted from waitlist',
+      status: BOOKING_STATUS.BOOKED,
+      createdAt: new Date().toISOString(),
+      checkedInAt: null,
+      releasedAt: null,
+      fromWaitlistId: entry.id,
+    }
+    d.roomBookings.push(booking)
+
+    entry.status = WAITLIST_STATUS.PROMOTED
+    entry.promotedAt = new Date().toISOString()
+    entry.promotedBookingId = booking.id
+
+    notify(d, {
+      recipientId: entry.userId,
+      title: `${room?.name ?? 'Classroom'} is yours`,
+      message: `You were next in the queue and ${becauseText} — ${date}, ${slot.start}–${slot.end} is now booked in your name. Check in within ${CHECK_IN_GRACE_MINUTES} minutes of the start.`,
+      category: 'classroom',
+      link: '/classrooms',
+    })
+    audit(d, {
+      actorId: 'system',
+      actorName: 'SpaceHub',
+      action: 'classroom.waitlist.promote',
+      entity: room?.name ?? roomId,
+      detail: `${entry.userName} promoted for ${date} ${slot.start}-${slot.end}`,
+    })
+
+    // Everyone still waiting just moved up a place.
+    waitingFor(d, roomId, date, slotId).forEach((w, i) => {
+      notify(d, {
+        recipientId: w.userId,
+        title: 'You moved up the queue',
+        message: `You're now #${i + 1} for ${room?.name ?? 'the room'} on ${date}, ${slot.start}–${slot.end}.`,
+        category: 'classroom',
+        link: '/classrooms',
+      })
+    })
+
+    return booking
+  }
+
+  return null
+}
+
+/** Queue entries for a slot, with 1-based positions for display. */
+export async function listRoomWaitlist({ roomId, date, slotId }) {
+  return waitingFor(db, roomId, date, slotId).map((w, i) => ({ ...w, position: i + 1 }))
+}
+
+/** Every queue this user is sitting in, plus what happened to past entries. */
+export async function listMyWaitlistEntries(userId) {
+  return (db.roomWaitlist ?? [])
+    .filter((w) => w.userId === userId)
+    .map((w) => {
+      const position =
+        w.status === WAITLIST_STATUS.WAITING
+          ? waitingFor(db, w.roomId, w.date, w.slotId).findIndex((x) => x.id === w.id) + 1
+          : null
+      return { ...w, position }
+    })
+    .sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1))
+}
+
+export async function joinRoomWaitlist({ roomId, date, slotId, userId, userRole, purpose }) {
+  const slot = BOOKABLE_SLOTS.find((s) => s.id === slotId)
+  if (!slot) throw new Error('Invalid time slot.')
+
+  const holder = activeBookingsFor(roomId, date).find((b) => b.slotId === slotId)
+  if (!holder) throw new Error('That slot is free right now — just book it.')
+  if (holder.bookedBy === userId) throw new Error('You already hold this slot.')
+
+  const already = waitingFor(db, roomId, date, slotId).some((w) => w.userId === userId)
+  if (already) throw new Error("You're already in the queue for this slot.")
+
+  const entry = {
+    id: newId('wl'),
+    roomId,
+    date,
+    slotId,
+    start: slot.start,
+    end: slot.end,
+    userId,
+    userName: profileName(userId),
+    userRole,
+    purpose: purpose?.trim() || '',
+    status: WAITLIST_STATUS.WAITING,
+    joinedAt: new Date().toISOString(),
+    promotedAt: null,
+    promotedBookingId: null,
+  }
+
+  return mutate((d) => {
+    if (!d.roomWaitlist) d.roomWaitlist = []
+    d.roomWaitlist.push(entry)
+    const room = d.rooms.find((r) => r.id === roomId)
+    audit(d, {
+      actorId: userId,
+      actorName: entry.userName,
+      action: 'classroom.waitlist.join',
+      entity: room?.name ?? roomId,
+      detail: `${date} ${slot.start}-${slot.end}, position ${waitingFor(d, roomId, date, slotId).length}`,
+    })
+    return { ...entry, position: waitingFor(d, roomId, date, slotId).length }
+  })
+}
+
+export async function leaveRoomWaitlist(id, { byUserId } = {}) {
+  return mutate((d) => {
+    const w = (d.roomWaitlist ?? []).find((x) => x.id === id)
+    if (!w) throw new Error('Queue entry not found.')
+    if (w.status !== WAITLIST_STATUS.WAITING) throw new Error('This queue entry is no longer active.')
+    w.status = WAITLIST_STATUS.CANCELLED
+    audit(d, {
+      actorId: byUserId ?? w.userId,
+      actorName: profileName(byUserId ?? w.userId),
+      action: 'classroom.waitlist.leave',
+      entity: w.roomId,
+      detail: `${w.date} ${w.start}-${w.end}`,
+    })
+    return w
   })
 }
 
@@ -907,6 +1278,22 @@ export async function blockRoomDate({ roomId, date, reason, byUserId }) {
         b.status = BOOKING_STATUS.CANCELLED
         b.releasedAt = new Date().toISOString()
       })
+    // The room is out of action for the day, so nobody can be promoted into
+    // it — close the queues instead of leaving people waiting for nothing.
+    const roomName = d.rooms.find((r) => r.id === roomId)?.name ?? roomId
+    ;(d.roomWaitlist ?? [])
+      .filter((w) => w.roomId === roomId && w.date === date && w.status === WAITLIST_STATUS.WAITING)
+      .forEach((w) => {
+        w.status = WAITLIST_STATUS.CANCELLED
+        w.skippedReason = `${roomName} was blocked for ${date}: ${block.reason}`
+        notify(d, {
+          recipientId: w.userId,
+          title: 'Queue closed',
+          message: `${roomName} is blocked on ${date} (${block.reason}), so your queue entry was closed.`,
+          category: 'classroom',
+          link: '/classrooms',
+        })
+      })
     return block
   })
 }
@@ -928,6 +1315,7 @@ export async function adminCancelBooking(id, reason) {
     b.status = BOOKING_STATUS.CANCELLED
     b.releasedAt = new Date().toISOString()
     b.adminOverrideReason = reason
+    promoteFromWaitlist(d, b.roomId, b.date, b.slotId, 'an admin released the booking')
     return b
   })
 }
@@ -1029,6 +1417,460 @@ export async function cancelFacilityBooking(id) {
     if (!b) throw new Error('Booking not found.')
     b.status = FACILITY_BOOKING_STATUS.CANCELLED
     return b
+  })
+}
+
+// ------------------------------------------------- facility access requests
+// Submitted -> [Faculty endorsement ->] Lab review -> Approved / Rejected.
+// Students & class reps must name a faculty mentor who endorses first; staff
+// requests skip straight to the lab. Which lab person reviews depends on the
+// "level" of the request (routine -> Lab Assistant, elevated -> Lab
+// Administrator) — see src/lib/facilityRouting.js.
+
+function notify(d, { recipientId, title, message, category = 'facility', link = '/facilities' }) {
+  if (!recipientId) return
+  if (!d.notifications) d.notifications = []
+  d.notifications.push({
+    id: newId('notif'),
+    recipientId,
+    title,
+    message,
+    category,
+    link,
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  })
+}
+
+function audit(d, { actorId, actorName, action, entity, detail }) {
+  if (!d.auditLogs) d.auditLogs = []
+  d.auditLogs.push({
+    id: newId('audit'),
+    actorId,
+    actorName,
+    action,
+    entity,
+    detail,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+function profileName(id) {
+  return db.profiles.find((p) => p.id === id)?.name ?? 'Unknown'
+}
+
+/** Approved sessions that would collide with this window on the same facility. */
+function approvedClashes(facilityId, date, startTime, endTime, exceptId = null) {
+  return (db.facilityRequests ?? []).filter(
+    (r) =>
+      r.id !== exceptId &&
+      r.facilityId === facilityId &&
+      r.date === date &&
+      r.status === FACILITY_REQUEST_STATUS.APPROVED &&
+      overlaps(r.startTime, r.endTime, startTime, endTime)
+  )
+}
+
+export async function listFacilityRequests({ facilityId, requesterId, status, date } = {}) {
+  return (db.facilityRequests ?? [])
+    .filter(
+      (r) =>
+        (!facilityId || r.facilityId === facilityId) &&
+        (!requesterId || r.requesterId === requesterId) &&
+        (!status || r.status === status) &&
+        (!date || r.date === date)
+    )
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
+
+export async function listMyFacilityRequests(userId) {
+  return listFacilityRequests({ requesterId: userId })
+}
+
+/**
+ * The approval inbox for one person, split by which hat they're wearing:
+ *  - `endorsements`: student requests naming them as mentor
+ *  - `labReviews`:   requests routed to them as Lab Assistant / Lab Admin
+ * Resource/system admins see everything as an oversight override.
+ */
+export async function listFacilityApprovalQueue(user) {
+  if (!user) return { endorsements: [], labReviews: [] }
+  const all = db.facilityRequests ?? []
+  const isOversight =
+    user.role === ROLES.RESOURCE_ADMIN || user.role === ROLES.SYS_ADMIN || user.role === 'admin'
+
+  const endorsements = all.filter(
+    (r) =>
+      r.status === FACILITY_REQUEST_STATUS.PENDING_FACULTY &&
+      (isOversight || r.mentorId === user.id)
+  )
+
+  const labReviews = all.filter(
+    (r) =>
+      r.status === FACILITY_REQUEST_STATUS.PENDING_LAB &&
+      (isOversight || r.reviewerId === user.id)
+  )
+
+  return { endorsements, labReviews }
+}
+
+export async function createFacilityRequest({
+  facilityId,
+  requesterId,
+  requesterRole,
+  date,
+  startTime,
+  endTime,
+  reason,
+  location,
+  nodeHours,
+  mentorId,
+}) {
+  const facility = db.facilities.find((f) => f.id === facilityId)
+  if (!facility) throw new Error('Facility not found.')
+  if (facility.underMaintenance) throw new Error('This facility is under maintenance and is not accepting requests.')
+  if (!date || !startTime || !endTime) throw new Error('Pick a date, a start time and an end time.')
+  if (toMinutes(endTime) <= toMinutes(startTime)) throw new Error('The end time has to be after the start time.')
+  if (!reason?.trim()) throw new Error('Add a short reason so the approver knows what this is for.')
+
+  const route = planRequestRoute({
+    facility,
+    requesterRole,
+    date,
+    startTime,
+    endTime,
+    nodeHours: nodeHours ? Number(nodeHours) : null,
+  })
+
+  if (route.needsEndorsement && !mentorId) {
+    throw new Error('Pick the faculty member who should endorse this request first.')
+  }
+  if (!route.reviewerId) {
+    throw new Error('No lab staff are assigned to this facility yet — contact the resource admin.')
+  }
+
+  const request = {
+    id: newId('freq'),
+    facilityId,
+    requesterId,
+    requesterName: profileName(requesterId),
+    requesterRole,
+    date,
+    startTime,
+    endTime,
+    durationMinutes: toMinutes(endTime) - toMinutes(startTime),
+    reason: reason.trim(),
+    location: location?.trim() || facility.location,
+    nodeHours: nodeHours ? Number(nodeHours) : null,
+    level: route.level,
+    levelReasons: route.levelReasons,
+    mentorId: route.needsEndorsement ? mentorId : null,
+    mentorName: route.needsEndorsement ? profileName(mentorId) : null,
+    mentorDecision: null,
+    mentorDecidedAt: null,
+    mentorNote: null,
+    reviewerId: route.reviewerId,
+    reviewerRole: route.reviewerRole,
+    reviewerName: profileName(route.reviewerId),
+    labDecision: null,
+    labDecidedAt: null,
+    labNote: null,
+    altDate: null,
+    altStartTime: null,
+    altEndTime: null,
+    status: route.needsEndorsement
+      ? FACILITY_REQUEST_STATUS.PENDING_FACULTY
+      : FACILITY_REQUEST_STATUS.PENDING_LAB,
+    createdAt: new Date().toISOString(),
+  }
+
+  return mutate((d) => {
+    if (!d.facilityRequests) d.facilityRequests = []
+    d.facilityRequests.push(request)
+
+    if (route.needsEndorsement) {
+      notify(d, {
+        recipientId: mentorId,
+        title: 'Facility request needs your endorsement',
+        message: `${request.requesterName} asked for ${facility.name} on ${date} (${startTime}–${endTime}).`,
+      })
+    } else {
+      notify(d, {
+        recipientId: route.reviewerId,
+        title: 'New facility request to review',
+        message: `${request.requesterName} asked for ${facility.name} on ${date} (${startTime}–${endTime}).`,
+      })
+    }
+
+    audit(d, {
+      actorId: requesterId,
+      actorName: request.requesterName,
+      action: 'facility.request.create',
+      entity: facility.name,
+      detail: `${route.level} request, routed to ${request.reviewerName}`,
+    })
+    return request
+  })
+}
+
+/** Stage 1 — the named faculty mentor endorses or rejects. */
+export async function decideFacultyEndorsement(id, { decision, byUserId, note }) {
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_FACULTY) {
+    throw new Error('This request is not waiting on faculty endorsement.')
+  }
+
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
+    r.mentorDecision = decision
+    r.mentorDecidedAt = new Date().toISOString()
+    r.mentorNote = note?.trim() || null
+
+    if (decision === 'approved') {
+      r.status = FACILITY_REQUEST_STATUS.PENDING_LAB
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Endorsed request to review',
+        message: `${r.requesterName}'s ${facility?.name ?? 'facility'} request was endorsed by ${profileName(byUserId)} — now with you.`,
+      })
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Faculty endorsed your request',
+        message: `Now with ${r.reviewerName} (${r.reviewerRole === ROLES.LAB_ADMIN ? 'Lab Administrator' : 'Lab Assistant'}) for allocation.`,
+      })
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.REJECTED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility request rejected',
+        message: `${profileName(byUserId)} did not endorse your ${facility?.name ?? 'facility'} request.${note ? ` Reason: ${note}` : ''}`,
+      })
+    }
+
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.endorsement.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `Request by ${r.requesterName}`,
+    })
+    return r
+  })
+}
+
+/**
+ * Stage 2 — lab staff decide against actual availability. They can approve,
+ * reject, or offer a different slot the requester then accepts or declines.
+ */
+export async function decideLabReview(id, { decision, byUserId, note, altDate, altStartTime, altEndTime }) {
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.PENDING_LAB) {
+    throw new Error('This request is not waiting on lab review.')
+  }
+
+  if (decision === 'approved') {
+    const clashes = approvedClashes(request.facilityId, request.date, request.startTime, request.endTime, id)
+    if (clashes.length) {
+      throw new Error(
+        `That slot is already allocated to ${clashes[0].requesterName} (${clashes[0].startTime}–${clashes[0].endTime}). Offer an alternative instead.`
+      )
+    }
+  }
+
+  if (decision === 'alternative') {
+    if (!altDate || !altStartTime || !altEndTime) throw new Error('Pick the alternative date and time to offer.')
+    if (toMinutes(altEndTime) <= toMinutes(altStartTime)) throw new Error('The alternative end time has to be after its start.')
+    const clashes = approvedClashes(request.facilityId, altDate, altStartTime, altEndTime, id)
+    if (clashes.length) {
+      throw new Error(`That alternative is taken too (${clashes[0].requesterName}). Pick another slot.`)
+    }
+  }
+
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
+    r.labDecision = decision
+    r.labDecidedAt = new Date().toISOString()
+    r.labNote = note?.trim() || null
+
+    if (decision === 'approved') {
+      r.status = FACILITY_REQUEST_STATUS.APPROVED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility slot allocated',
+        message: `${facility?.name ?? 'Facility'} is yours on ${r.date}, ${r.startTime}–${r.endTime}.`,
+      })
+    } else if (decision === 'alternative') {
+      r.status = FACILITY_REQUEST_STATUS.ALTERNATIVE_OFFERED
+      r.altDate = altDate
+      r.altStartTime = altStartTime
+      r.altEndTime = altEndTime
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Alternative slot offered',
+        message: `${facility?.name ?? 'Facility'} is busy then. Offered ${altDate}, ${altStartTime}–${altEndTime}.`,
+      })
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.REJECTED
+      notify(d, {
+        recipientId: r.requesterId,
+        title: 'Facility request rejected',
+        message: `${facility?.name ?? 'Facility'} request was rejected.${note ? ` Reason: ${note}` : ''}`,
+      })
+    }
+
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.lab.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `Request by ${r.requesterName} on ${r.date}`,
+    })
+    return r
+  })
+}
+
+/** The requester answers an offered alternative slot. */
+export async function respondToAlternative(id, { decision, byUserId }) {
+  const request = (db.facilityRequests ?? []).find((r) => r.id === id)
+  if (!request) throw new Error('Request not found.')
+  if (request.status !== FACILITY_REQUEST_STATUS.ALTERNATIVE_OFFERED) {
+    throw new Error('There is no alternative slot waiting on this request.')
+  }
+
+  if (decision === 'accept') {
+    const clashes = approvedClashes(request.facilityId, request.altDate, request.altStartTime, request.altEndTime, id)
+    if (clashes.length) {
+      throw new Error('That alternative was just taken — ask the lab for another slot.')
+    }
+  }
+
+  return mutate((d) => {
+    const r = d.facilityRequests.find((x) => x.id === id)
+    const facility = d.facilities.find((f) => f.id === r.facilityId)
+    if (decision === 'accept') {
+      r.date = r.altDate
+      r.startTime = r.altStartTime
+      r.endTime = r.altEndTime
+      r.durationMinutes = toMinutes(r.endTime) - toMinutes(r.startTime)
+      r.status = FACILITY_REQUEST_STATUS.APPROVED
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Alternative slot accepted',
+        message: `${r.requesterName} accepted ${r.date}, ${r.startTime}–${r.endTime} on ${facility?.name ?? 'the facility'}.`,
+      })
+    } else {
+      r.status = FACILITY_REQUEST_STATUS.CANCELLED
+      notify(d, {
+        recipientId: r.reviewerId,
+        title: 'Alternative slot declined',
+        message: `${r.requesterName} declined the alternative for ${facility?.name ?? 'the facility'}.`,
+      })
+    }
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: `facility.alternative.${decision}`,
+      entity: facility?.name ?? r.facilityId,
+      detail: `${r.date} ${r.startTime}-${r.endTime}`,
+    })
+    return r
+  })
+}
+
+export async function cancelFacilityRequest(id, { byUserId } = {}) {
+  return mutate((d) => {
+    const r = (d.facilityRequests ?? []).find((x) => x.id === id)
+    if (!r) throw new Error('Request not found.')
+    if (r.status === FACILITY_REQUEST_STATUS.APPROVED) {
+      throw new Error('This slot is already allocated — ask the lab staff to release it.')
+    }
+    r.status = FACILITY_REQUEST_STATUS.CANCELLED
+    audit(d, {
+      actorId: byUserId,
+      actorName: profileName(byUserId),
+      action: 'facility.request.cancel',
+      entity: r.facilityId,
+      detail: `${r.date} ${r.startTime}-${r.endTime}`,
+    })
+    return r
+  })
+}
+
+/**
+ * Who is using a facility, when — the lab's day schedule. Merges allocated
+ * access requests with any legacy direct bookings so nothing is invisible,
+ * and reports the facility's staffed hours so the UI can draw the day.
+ */
+export async function getFacilitySchedule({ facilityId, date }) {
+  const facilities = facilityId
+    ? db.facilities.filter((f) => f.id === facilityId)
+    : [...db.facilities]
+
+  return facilities.map((facility) => {
+    const fromRequests = (db.facilityRequests ?? [])
+      .filter((r) => r.facilityId === facility.id && r.date === date && r.status === FACILITY_REQUEST_STATUS.APPROVED)
+      .map((r) => ({
+        id: r.id,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        userName: r.requesterName,
+        userId: r.requesterId,
+        reason: r.reason,
+        level: r.level,
+        source: 'request',
+      }))
+
+    // Legacy bookings made before the request workflow existed.
+    const fromBookings = (db.facilityBookings ?? [])
+      .filter(
+        (b) =>
+          b.facilityId === facility.id &&
+          b.date === date &&
+          b.status === FACILITY_BOOKING_STATUS.BOOKED &&
+          !b.requestId
+      )
+      .map((b) => ({
+        id: b.id,
+        startTime: b.start,
+        endTime: b.end,
+        userName: profileName(b.userId),
+        userId: b.userId,
+        reason: b.purpose,
+        level: 'routine',
+        source: 'booking',
+      }))
+
+    const sessions = [...fromRequests, ...fromBookings].sort(
+      (a, b) => toMinutes(a.startTime) - toMinutes(b.startTime)
+    )
+
+    const bookedMinutes = sessions.reduce(
+      (sum, s) => sum + (toMinutes(s.endTime) - toMinutes(s.startTime)),
+      0
+    )
+    const openTime = facility.openTime ?? '09:00'
+    const closeTime = facility.closeTime ?? '17:00'
+    const staffedMinutes = Math.max(1, toMinutes(closeTime) - toMinutes(openTime))
+
+    return {
+      facility,
+      date,
+      openTime,
+      closeTime,
+      sessions,
+      pendingCount: (db.facilityRequests ?? []).filter(
+        (r) =>
+          r.facilityId === facility.id &&
+          r.date === date &&
+          (r.status === FACILITY_REQUEST_STATUS.PENDING_FACULTY ||
+            r.status === FACILITY_REQUEST_STATUS.PENDING_LAB)
+      ).length,
+      utilizationPct: Math.min(100, Math.round((bookedMinutes / staffedMinutes) * 100)),
+    }
   })
 }
 
@@ -1775,7 +2617,7 @@ export async function markNotificationRead(id) {
 
 export async function markAllNotificationsRead(userId) {
   return mutate((d) => {
-    ;(d.notifications || []).forEach((n) => {
+    (d.notifications || []).forEach((n) => {
       if (!userId || n.recipientId === userId) n.isRead = true
     })
     return true

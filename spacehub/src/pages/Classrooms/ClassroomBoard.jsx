@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useLiveData } from '../../lib/useLiveData'
-import { getAvailability, listRooms } from '../../lib/dataClient'
-import { upcomingDates } from '../../lib/time'
-import { CAN_BOOK_CLASSROOM, ROLES, ROOM_TYPES } from '../../lib/constants'
+import { getAvailability, listRooms, listMyWaitlistEntries, leaveRoomWaitlist } from '../../lib/dataClient'
+import { upcomingDates, formatTimeRange } from '../../lib/time'
+import { CAN_BOOK_CLASSROOM, ROLES, ROOM_TYPES, WAITLIST_STATUS } from '../../lib/constants'
+import Badge from '../../components/common/Badge'
 import { Spinner } from '../../components/common/Feedback'
 import EmptyState from '../../components/common/EmptyState'
 import ReportIssueModal from '../../components/common/ReportIssueModal'
@@ -28,6 +29,7 @@ export default function ClassroomBoard() {
   const [date, setDate] = useState(dates[0].iso)
   const [bookingTarget, setBookingTarget] = useState(null)
   const [detailTarget, setDetailTarget] = useState(null)
+  const { data: myQueues } = useLiveData(() => listMyWaitlistEntries(user.id), [user.id])
   const [blockTarget, setBlockTarget] = useState(null)
   const [issueTarget, setIssueTarget] = useState(null)
 
@@ -55,20 +57,22 @@ export default function ClassroomBoard() {
       return
     }
     if (slot.status === 'booked' || slot.status === 'checked_in') {
-      setDetailTarget({ room, booking: slot.booking })
+      setDetailTarget({ room, booking: slot.booking, slotId: slot.id })
     }
   }
 
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-extrabold text-slate-900">Classrooms</h1>
+        <h1 className="text-xl font-extrabold text-slate-900">Book a class slot</h1>
         <p className="text-sm text-slate-500">
           {canBook
-            ? 'Free, first-come-first-served. Timetabled classes are always blocked.'
-            : 'View only — ask your class representative or faculty to book a slot.'}
+            ? 'Free slots are first-come-first-served. Already taken? Join the queue — if the holder cancels or never checks in, it passes to the next person automatically.'
+            : 'View only — ask your class representative, faculty or class advisor to book a slot.'}
         </p>
       </div>
+
+      {canBook && <MyQueuesPanel entries={myQueues} userId={user.id} rooms={allRooms} />}
 
       {/* Filter Row */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200">
@@ -175,7 +179,12 @@ export default function ClassroomBoard() {
                         {(slot.status === 'booked' || slot.status === 'checked_in') && (
                           <>
                             <span className="font-bold">{slot.status === 'checked_in' ? 'Checked in' : 'Booked'}</span>
-                            <span className="truncate">{slot.booking.purpose}</span>
+                            <span className="w-full truncate">{slot.booking.purpose}</span>
+                            {slot.waitingCount > 0 && (
+                              <span className="mt-0.5 rounded bg-blue-600 px-1 text-[9px] font-bold text-white">
+                                {slot.waitingCount} queued
+                              </span>
+                            )}
                           </>
                         )}
                         {slot.status === 'blocked' && 'Blocked'}
@@ -220,6 +229,8 @@ export default function ClassroomBoard() {
         onClose={() => setDetailTarget(null)}
         room={detailTarget?.room}
         booking={detailTarget?.booking}
+        slotId={detailTarget?.slotId}
+        date={date}
       />
       <BlockDateModal open={!!blockTarget} onClose={() => setBlockTarget(null)} room={blockTarget} date={date} />
       <ReportIssueModal
@@ -229,6 +240,56 @@ export default function ClassroomBoard() {
         targetId={issueTarget?.id}
         targetLabel={issueTarget?.name}
       />
+    </div>
+  )
+}
+
+/**
+ * Everything this user is queued for, plus what happened to entries that
+ * already resolved — a promotion is easy to miss otherwise.
+ */
+function MyQueuesPanel({ entries, userId, rooms }) {
+  const all = entries ?? []
+  const waiting = all.filter((w) => w.status === WAITLIST_STATUS.WAITING)
+  const recent = all
+    .filter((w) => w.status === WAITLIST_STATUS.PROMOTED || w.status === WAITLIST_STATUS.SKIPPED)
+    .slice(0, 3)
+
+  if (waiting.length === 0 && recent.length === 0) return null
+
+  const roomName = (id) => rooms?.find((r) => r.id === id)?.name ?? id
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Your queue positions</p>
+      <div className="mt-2 flex flex-col gap-1.5">
+        {waiting.map((w) => (
+          <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+            <span className="text-slate-700">
+              <span className="font-bold text-brand-700">#{w.position}</span> · {roomName(w.roomId)} · {w.date} ·{' '}
+              {formatTimeRange(w.start, w.end)}
+            </span>
+            <button
+              className="rounded px-2 py-0.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
+              onClick={() => leaveRoomWaitlist(w.id, { byUserId: userId })}
+            >
+              Leave queue
+            </button>
+          </div>
+        ))}
+        {recent.map((w) => (
+          <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs">
+            <span className="text-slate-500">
+              {roomName(w.roomId)} · {w.date} · {formatTimeRange(w.start, w.end)}
+            </span>
+            {w.status === WAITLIST_STATUS.PROMOTED ? (
+              <Badge tone="green">Slot came to you — it's booked</Badge>
+            ) : (
+              <Badge tone="amber">{w.skippedReason ?? 'Skipped'}</Badge>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

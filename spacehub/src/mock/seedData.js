@@ -69,6 +69,10 @@ export const SEED_TIMETABLE = [
   { room: 'room-ab2-201', day: 'Thursday', slot: 'slot2', code: '22CSC343' },
 ]
 
+// Each facility names the lab staff who review access requests, plus the
+// policy thresholds that decide whether a request is routine (Lab Assistant
+// clears it) or elevated (escalates to the Lab Administrator) — see
+// src/lib/facilityRouting.js.
 export const SEED_FACILITIES = [
   {
     id: 'fac-hpc',
@@ -80,6 +84,13 @@ export const SEED_FACILITIES = [
     inductionRequired: true,
     allocationModel: 'compute_time',
     image: '🖥️',
+    labAssistantId: 'user-labassist-1',
+    labAdminId: 'user-labadmin-1',
+    openTime: '08:00',
+    closeTime: '20:00',
+    assistantMaxHours: 4,
+    assistantMaxNodeHours: 20,
+    requiresAdminApproval: false,
   },
   {
     id: 'fac-3dprint',
@@ -91,6 +102,12 @@ export const SEED_FACILITIES = [
     inductionRequired: true,
     allocationModel: 'time_slot',
     image: '🖨️',
+    labAssistantId: 'user-labassist-2',
+    labAdminId: 'user-labadmin-2',
+    openTime: '09:00',
+    closeTime: '17:00',
+    assistantMaxHours: 3,
+    requiresAdminApproval: false,
   },
   {
     id: 'fac-vr',
@@ -102,6 +119,12 @@ export const SEED_FACILITIES = [
     inductionRequired: true,
     allocationModel: 'time_slot',
     image: '🥽',
+    labAssistantId: 'user-labassist-2',
+    labAdminId: 'user-labadmin-2',
+    openTime: '09:00',
+    closeTime: '17:00',
+    assistantMaxHours: 2,
+    requiresAdminApproval: false,
   },
   {
     id: 'fac-electronics',
@@ -113,6 +136,13 @@ export const SEED_FACILITIES = [
     inductionRequired: true,
     allocationModel: 'time_slot',
     image: '🔧',
+    labAssistantId: 'user-labassist-1',
+    labAdminId: 'user-labadmin-2',
+    openTime: '09:00',
+    closeTime: '17:00',
+    assistantMaxHours: 3,
+    // Soldering / high-voltage benches: the administrator signs off on every session.
+    requiresAdminApproval: true,
   },
 ]
 
@@ -121,13 +151,23 @@ export const SEED_PROFILES = [
   { id: 'user-dean-1', name: 'Dr Shankar K', role: ROLES.DEAN, department: 'Deanery of Engineering', email: 'dean@cb.amrita.edu', rollNumber: 'EMP.DEAN.ENG01' },
   { id: 'user-hod-1', name: 'Dr Prema Nedungadi', role: ROLES.HOD, department: 'Computer Science & Engineering', email: 'hod.cse@cb.amrita.edu', rollNumber: 'EMP.HOD.CSE01' },
   { id: 'user-student-1', name: 'Aarav Menon', role: ROLES.STUDENT, department: 'CSE, V A', email: 'aarav@cb.students.amrita.edu', rollNumber: 'CB.EN.U4CSE21234' },
+  { id: 'user-student-2', name: 'Diya Krishnan', role: ROLES.STUDENT, department: 'Int. M.Sc Data Science', email: 'diya@cb.students.amrita.edu' },
   { id: 'user-classrep-1', name: 'Devika Nair', role: ROLES.CLASS_REP, department: 'Int. M.Sc Data Science, VII B', email: 'devika.rep@cb.students.amrita.edu', rollNumber: 'CB.PS.I5DAS23157' },
+  { id: 'user-classrep-2', name: 'Arjun S', role: ROLES.CLASS_REP, department: 'CSE, V A', email: 'arjun.rep@cb.students.amrita.edu' },
   { id: 'user-classadvisor-1', name: 'Dr Devika', role: ROLES.CLASS_ADVISOR, department: 'Mathematics (Class Advisor, VII B)', email: 'devika.advisor@cb.amrita.edu', rollNumber: 'EMP.FAC.MATH402' },
+  { id: 'user-classadvisor-2', name: 'Dr Meera Nair', role: ROLES.CLASS_ADVISOR, department: 'CSE (Class Advisor, V A)', email: 'meera.advisor@cb.amrita.edu' },
   { id: 'user-faculty-1', name: 'Dr Thilaga M', role: ROLES.FACULTY, department: 'CSE / Mathematics', email: 'thilaga@cb.amrita.edu', rollNumber: 'EMP.FAC.CSE109' },
+  { id: 'user-faculty-2', name: 'Dr Kavitha P', role: ROLES.FACULTY, department: 'Computer Science and Engineering', email: 'kavitha@cb.amrita.edu' },
   { id: 'user-hpcfaculty-1', name: 'Dr Radhika N', role: ROLES.HPC_FACULTY, department: 'Centre for Computational Engineering', email: 'radhika.hpc@cb.amrita.edu', rollNumber: 'EMP.FAC.CCE301' },
+  { id: 'user-hpcfaculty-2', name: 'Dr Vivek Rao', role: ROLES.HPC_FACULTY, department: 'High Performance Computing Centre', email: 'vivek.hpc@cb.amrita.edu' },
   { id: 'user-labassist-1', name: 'Mr Suresh Kumar', role: ROLES.LAB_ASSISTANT, department: 'HPC & Innovation Lab', email: 'suresh.lab@cb.amrita.edu', rollNumber: 'EMP.STAFF.LAB204' },
+  { id: 'user-labassist-2', name: 'Ms Kavipriya', role: ROLES.LAB_ASSISTANT, department: 'Innovation Lab', email: 'kavipriya.lab@cb.amrita.edu' },
   { id: 'user-labadmin-1', name: 'Dr Anand Shenoy', role: ROLES.LAB_ADMIN, department: 'Computational Engineering', email: 'anand.labadmin@cb.amrita.edu', rollNumber: 'EMP.FAC.CCE102' },
+  { id: 'user-labadmin-2', name: 'Dr Nikhil Joseph', role: ROLES.LAB_ADMIN, department: 'Innovation and Prototyping Labs', email: 'nikhil.labadmin@cb.amrita.edu' },
   { id: 'user-resourceadmin-1', name: 'Mr Ramesh Iyer', role: ROLES.RESOURCE_ADMIN, department: 'Event & Space Office', email: 'ramesh.admin@cb.amrita.edu', rollNumber: 'EMP.ADMIN.RES005' },
+  { id: 'user-resourceadmin-2', name: 'Ms Anitha George', role: ROLES.RESOURCE_ADMIN, department: 'Campus Resource Management', email: 'anitha.admin@cb.amrita.edu' },
   { id: 'user-welfare-1', name: 'Ms Priya Balan', role: ROLES.LOST_PROPERTY_HANDLER, department: 'Office of Student Welfare', email: 'priya.welfare@cb.amrita.edu', rollNumber: 'EMP.STAFF.SW012' },
+  { id: 'user-welfare-2', name: 'Mr Joseph Mathew', role: ROLES.LOST_PROPERTY_HANDLER, department: 'Student Welfare and Support', email: 'joseph.welfare@cb.amrita.edu' },
   { id: 'user-sysadmin-1', name: 'Prof. K. R. Ramakrishnan', role: ROLES.SYS_ADMIN, department: 'ICT & Campus Systems', email: 'sysadmin@cb.amrita.edu', rollNumber: 'EMP.DIR.ICT001' },
+  { id: 'user-sysadmin-2', name: 'Ms Sneha Varghese', role: ROLES.SYS_ADMIN, department: 'Information and Campus Systems', email: 'sneha.sysadmin@cb.amrita.edu' },
 ]

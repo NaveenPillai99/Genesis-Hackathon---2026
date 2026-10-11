@@ -68,9 +68,20 @@ export const ROLE_DESCRIPTIONS = {
 }
 
 // Permissions
+// Class reps, faculty and class advisors all book teaching space directly.
 export const CAN_BOOK_CLASSROOM = new Set([
-  ROLES.CLASS_REP, ROLES.FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
+  ROLES.CLASS_REP, ROLES.FACULTY, ROLES.CLASS_ADVISOR, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
 ])
+
+// Anyone who can book can also queue for a slot someone else is holding.
+export const CAN_JOIN_ROOM_WAITLIST = CAN_BOOK_CLASSROOM
+
+export const WAITLIST_STATUS = {
+  WAITING: 'waiting',
+  PROMOTED: 'promoted',
+  SKIPPED: 'skipped',
+  CANCELLED: 'cancelled',
+}
 
 export const CAN_REQUEST_TIMETABLE_CHANGE = new Set([
   ROLES.CLASS_REP, ROLES.FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
@@ -104,6 +115,76 @@ export const CAN_BOOK_FACILITY = new Set([
 export const CAN_MANAGE_FACILITY = new Set([
   ROLES.LAB_ASSISTANT, ROLES.LAB_ADMIN, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'facility_incharge', 'admin'
 ])
+
+// ---------------------------------------------------- facility access flow
+// Every role can raise a facility access request — the Facilities section is
+// available campus-wide, only the routing differs by who is asking.
+export const CAN_REQUEST_FACILITY = new Set([
+  ROLES.STUDENT, ROLES.CLASS_REP, ROLES.CLASS_ADVISOR, ROLES.FACULTY, ROLES.HPC_FACULTY,
+  ROLES.LAB_ASSISTANT, ROLES.LAB_ADMIN, ROLES.RESOURCE_ADMIN, ROLES.LOST_PROPERTY_HANDLER,
+  ROLES.SYS_ADMIN, 'facility_incharge', 'admin',
+])
+
+// Student-side roles must name a faculty mentor who endorses the request
+// before it ever reaches lab staff. Staff roles skip straight to the lab.
+export const NEEDS_FACULTY_ENDORSEMENT = new Set([ROLES.STUDENT, ROLES.CLASS_REP])
+
+// Who may be picked as the endorsing mentor on a student request.
+export const CAN_BE_FACULTY_MENTOR = new Set([ROLES.FACULTY, ROLES.CLASS_ADVISOR, ROLES.HPC_FACULTY])
+
+// Who sees the "awaiting my endorsement" queue at all (narrowed per-request
+// to the named mentor; admins see everything as an oversight override).
+export const CAN_ENDORSE_FACILITY_REQUEST = new Set([
+  ROLES.FACULTY, ROLES.CLASS_ADVISOR, ROLES.HPC_FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin',
+])
+
+// Lab personnel who give the final allocation decision against availability.
+export const CAN_REVIEW_LAB_REQUEST = new Set([
+  ROLES.LAB_ASSISTANT, ROLES.LAB_ADMIN, ROLES.HPC_FACULTY, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN,
+  'facility_incharge', 'admin',
+])
+
+// Submitted -> [Faculty endorsement ->] Lab review -> Approved / Rejected,
+// with "alternative slot offered" as a holding state the requester answers.
+export const FACILITY_REQUEST_STATUS = {
+  PENDING_FACULTY: 'pending_faculty',
+  PENDING_LAB: 'pending_lab',
+  ALTERNATIVE_OFFERED: 'alternative_offered',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  CANCELLED: 'cancelled',
+}
+
+export const FACILITY_REQUEST_STATUS_LABELS = {
+  pending_faculty: 'Faculty endorsement pending',
+  pending_lab: 'Lab review pending',
+  alternative_offered: 'Alternative slot offered',
+  approved: 'Approved — slot allocated',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+}
+
+export const FACILITY_REQUEST_STATUS_TONES = {
+  pending_faculty: 'amber',
+  pending_lab: 'blue',
+  alternative_offered: 'purple',
+  approved: 'green',
+  rejected: 'red',
+  cancelled: 'slate',
+}
+
+// "Level of request" decides WHICH lab person reviews it: routine usage goes
+// to the Lab Assistant on duty, anything elevated escalates to the Lab
+// Administrator. See src/lib/facilityRouting.js for the rules.
+export const FACILITY_REQUEST_LEVEL = {
+  ROUTINE: 'routine',
+  ELEVATED: 'elevated',
+}
+
+export const FACILITY_REQUEST_LEVEL_LABELS = {
+  routine: 'Routine',
+  elevated: 'Elevated',
+}
 
 export const CAN_APPROVE_HPC = new Set([
   ROLES.HPC_FACULTY, ROLES.FACULTY, ROLES.LAB_ADMIN, ROLES.RESOURCE_ADMIN, ROLES.SYS_ADMIN, 'admin'
