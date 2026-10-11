@@ -195,9 +195,9 @@ export default function AmritaPortalHero({ user, onActionClick, customAlerts = [
             <div className="relative shrink-0">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-0.5 border-2 border-cyan-400 bg-white shadow-xs overflow-hidden flex items-center justify-center">
                 <img
-                  src="/amma_portrait.svg"
+                  src="/amma.png"
                   alt="Chancellor Mata Amritanandamayi"
-                  className="w-full h-full object-cover rounded-full"
+                  className="w-full h-full object-cover object-top rounded-full"
                 />
               </div>
               <span className="absolute bottom-1 right-2 w-3.5 h-3.5 rounded-full bg-cyan-400 border-2 border-white shadow-xs"></span>
